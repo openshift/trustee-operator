@@ -22,6 +22,7 @@ metadata:
             "kbsAuthSecretName": "kbs-auth-public-key",
             "kbsConfigMapName": "kbs-config",
             "kbsDeploymentType": "AllInOneDeployment",
+            "kbsResourcePolicyConfigMapName": "resource-policy",
             "kbsRvpsRefValuesConfigMapName": "rvps-reference-values"
           }
         }
