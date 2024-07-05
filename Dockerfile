@@ -29,3 +29,20 @@ COPY --from=builder /workspace/manager .
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
+
+# Red Hat labels.
+
+ARG NAME=trustee-operator
+ARG DESCRIPTION="The Trustee operator."
+
+LABEL com.redhat.component=$NAME
+LABEL description=$DESCRIPTION
+LABEL io.k8s.description=$DESCRIPTION
+LABEL io.k8s.display-name=$NAME
+LABEL name=$NAME
+LABEL summary=$DESCRIPTION
+LABEL distribution-scope=public
+LABEL release="1"
+LABEL url="https://access.redhat.com/"
+LABEL vendor="Red Hat, Inc."
+LABEL version="1"
