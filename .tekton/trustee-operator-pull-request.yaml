@@ -28,6 +28,8 @@ spec:
     value: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator:on-pr-{{revision}}
   - name: revision
     value: '{{revision}}'
+  - prefetch-input
+    value: '{"type": "gomod", "path": "."}'
   pipelineSpec:
     finally:
     - name: show-sbom
