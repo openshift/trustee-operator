@@ -47,3 +47,7 @@ LABEL features.operators.openshift.io/token-auth-aws="false"
 LABEL features.operators.openshift.io/token-auth-azure="false"
 LABEL features.operators.openshift.io/token-auth-gcp="false"
 LABEL operators.openshift.io/valid-subscription="false"
+
+# Licenses
+
+COPY LICENSE /licenses/LICENSE

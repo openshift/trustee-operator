@@ -46,3 +46,7 @@ LABEL release="1"
 LABEL url="https://access.redhat.com/"
 LABEL vendor="Red Hat, Inc."
 LABEL version="1"
+
+# Licenses
+
+COPY LICENSE /licenses/LICENSE
