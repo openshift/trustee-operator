@@ -22,6 +22,8 @@ spec:
     value: '{{source_url}}'
   - name: revision
     value: '{{revision}}'
+  - name: build-source-image
+    value: "true"
   - name: output-image
     value: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator-bundle:on-pr-{{revision}}
   - name: image-expires-after
