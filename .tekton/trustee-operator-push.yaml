@@ -25,6 +25,12 @@ spec:
     value: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator:{{revision}}
   - name: revision
     value: '{{revision}}'
+  - name: build-source-image
+    value: "true"
+  - name: prefetch-input
+    value: '{"type": "gomod", "path": "."}'
+  - name: hermetic
+    value: "true"
   pipelineSpec:
     finally:
     - name: show-sbom
@@ -107,7 +113,7 @@ spec:
       description: Image tag expiration time, time values could be something like
         1h, 2d, 3w for hours, days, and weeks, respectively.
       name: image-expires-after
-    - default: "true"
+    - default: "false"
       description: Build a source image.
       name: build-source-image
       type: string
