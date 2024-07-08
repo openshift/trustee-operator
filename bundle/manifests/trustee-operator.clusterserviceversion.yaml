@@ -28,7 +28,7 @@ metadata:
       ]
     capabilities: Basic Install
     categories: "Security"
-    containerImage: quay.io/confidential-containers/trustee-operator:v0.1.0
+    containerImage: quay.io/confidential-containers/trustee-operator:v0.1.0@sha256:9842d2fa531b5509b8a03096eec86e318e5c4fddeac01deaf528ab79da66f8c2
     createdAt: "2024-06-07T10:06:06Z"
     support: "Confidential Containers Community"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
@@ -184,7 +184,7 @@ spec:
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --v=0
-                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1
+                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1@sha256:d4883d7c622683b3319b5e6b3a7edfbf2594c18060131a8bf64504805f875522
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443
@@ -219,7 +219,7 @@ spec:
                   value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
                 - name: RVPS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/rvps:latest
-                image: quay.io/confidential-containers/trustee-operator:v0.1.0
+                image: quay.io/confidential-containers/trustee-operator:v0.1.0@sha256:9842d2fa531b5509b8a03096eec86e318e5c4fddeac01deaf528ab79da66f8c2
                 livenessProbe:
                   httpGet:
                     path: /healthz
