@@ -36,18 +36,6 @@ LABEL url="https://access.redhat.com/"
 LABEL vendor="Red Hat, Inc."
 LABEL version="1"
 
-LABEL features.operators.openshift.io/cnf="false"
-LABEL features.operators.openshift.io/cni="false"
-LABEL features.operators.openshift.io/csi="false"
-LABEL features.operators.openshift.io/disconnected="false"
-LABEL features.operators.openshift.io/fips-compliant="false"
-LABEL features.operators.openshift.io/proxy-aware="false"
-LABEL features.operators.openshift.io/tls-profiles="false"
-LABEL features.operators.openshift.io/token-auth-aws="false"
-LABEL features.operators.openshift.io/token-auth-azure="false"
-LABEL features.operators.openshift.io/token-auth-gcp="false"
-LABEL operators.openshift.io/valid-subscription="false"
-
 # Licenses
 
 COPY LICENSE /licenses/LICENSE
