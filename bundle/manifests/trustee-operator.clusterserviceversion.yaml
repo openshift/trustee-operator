@@ -29,12 +29,23 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    categories: Security
-    containerImage: quay.io/confidential-containers/trustee-operator:v0.1.0
-    createdAt: "2024-06-26T10:00:49Z"
+    categories: "Security"
+    containerImage: registry.stage.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9-operator@adf00e7620de206ca4b6cdc93495506b02c3af62525668980305ab3a2a594d12
+    createdAt: "2024-06-07T10:06:06Z"
+    support: "Confidential Containers Community"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
-    support: Confidential Containers Community
+    features.operators.openshift.io/cnf: "false"
+    features.operators.openshift.io/cni: "false"
+    features.operators.openshift.io/csi: "false"
+    features.operators.openshift.io/disconnected: "false"
+    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/proxy-aware: "false"
+    features.operators.openshift.io/tls-profiles: "false"
+    features.operators.openshift.io/token-auth-aws: "false"
+    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-gcp: "false"
+    operators.openshift.io/valid-subscription: '["OpenShift Container Platform"]'
   name: trustee-operator.v0.1.0
   namespace: placeholder
 spec:
@@ -186,7 +197,7 @@ spec:
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --v=0
-                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1
+                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1@sha256:d4883d7c622683b3319b5e6b3a7edfbf2594c18060131a8bf64504805f875522
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443
@@ -216,12 +227,12 @@ spec:
                     fieldRef:
                       fieldPath: metadata.namespace
                 - name: KBS_IMAGE_NAME
-                  value: quay.io/confidential-containers/trustee:290fd0eb64ab20f50efbd27cf80542851c0ee17f
+                  value: registry.stage.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9@sha256:f9a01814a01ff2dc45c20d70c288c50ffc731c0471c89e3786c98342e2d8583b
                 - name: AS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
                 - name: RVPS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/rvps:latest
-                image: quay.io/confidential-containers/trustee-operator:v0.1.0
+                image: registry.stage.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9-operator@sha256:adf00e7620de206ca4b6cdc93495506b02c3af62525668980305ab3a2a594d12
                 livenessProbe:
                   httpGet:
                     path: /healthz
