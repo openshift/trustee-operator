@@ -20,6 +20,9 @@ generatorOptions:
 
 patches:
 - path: patch-ref-values.yaml
+- path: patch-attestation-policy.yaml
+- path: patch-resource-policy.yaml
+- path: patch-tdx-config.yaml
 # uncomment the following line for injecting sample resources in kbs
 #- path: patch-kbs-resources.yaml
 
@@ -29,4 +32,11 @@ resources:
 - as-config.yaml
 - rvps-config.yaml
 - rvps-reference-values.yaml
+- attestation-policy.yaml
+- ibmse-attestation-policy.yaml
+- ibmse-resource-policy.yaml
+- resource-policy.yaml
+- tdx-config.yaml
+- ibmse-pv.yaml
+- ibmse-pvc.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples
