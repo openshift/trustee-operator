@@ -333,7 +333,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 	// are mounted as a RW volume in memory to allow trustee components
 	// to have full access to the filesystem
 	// confidential-containers
-	volume, err := r.createConfidentialContainersVolume(confidentialContainers)
+	volume, err := r.createEmptyDirVolume(confidentialContainers)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +341,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 	volumeMount := createVolumeMount(volume.Name, filepath.Join(rootPath, volume.Name))
 	kbsVM = append(kbsVM, volumeMount)
 	// default repo
-	volume, err = r.createDefaultRepositoryVolume(defaultRepository)
+	volume, err = r.createEmptyDirVolume(defaultRepository)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +350,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 	kbsVM = append(kbsVM, volumeMount)
 
 	// kbs-config
-	volume, err = r.createKbsConfigMapVolume(ctx, "kbs-config")
+	volume, err = r.createConfigMapVolume(ctx, "kbs-config", r.kbsConfig.Spec.KbsConfigMapName)
 	if err != nil {
 		return nil, err
 	}
@@ -358,8 +358,53 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 	volumes = append(volumes, *volume)
 	kbsVM = append(kbsVM, volumeMount)
 
+	// attestation policy
+	if r.kbsConfig.Spec.KbsAttestationPolicyConfigMapName != "" {
+		volume, err = r.createConfigMapVolume(ctx, "attestation-opa", r.kbsConfig.Spec.KbsAttestationPolicyConfigMapName)
+		if err != nil {
+			return nil, err
+		}
+		// attestation policy file is "/opt/confidential-containers/attestation-service/opa/default.rego"
+		volumeMount = createVolumeMount(volume.Name, filepath.Join(confidentialContainersPath, "attestation-service", "opa"))
+		volumes = append(volumes, *volume)
+		kbsVM = append(kbsVM, volumeMount)
+	}
+
+	// resource policy
+	if r.kbsConfig.Spec.KbsResourcePolicyConfigMapName != "" {
+		volume, err = r.createConfigMapVolume(ctx, "opa", r.kbsConfig.Spec.KbsResourcePolicyConfigMapName)
+		if err != nil {
+			return nil, err
+		}
+		volumeMount = createVolumeMount(volume.Name, filepath.Join(confidentialContainersPath, volume.Name))
+		volumes = append(volumes, *volume)
+		kbsVM = append(kbsVM, volumeMount)
+	}
+
+	// TDX specific configuration
+	if r.kbsConfig.Spec.TdxConfigSpec.KbsTdxConfigMapName != "" {
+		volume, err = r.createConfigMapVolume(ctx, "tdx-config", r.kbsConfig.Spec.TdxConfigSpec.KbsTdxConfigMapName)
+		if err != nil {
+			return nil, err
+		}
+		volumeMount = createVolumeMountWithSubpath(volume.Name, filepath.Join(kbsDefaultConfigPath, tdxConfigFile), tdxConfigFile)
+		volumes = append(volumes, *volume)
+		kbsVM = append(kbsVM, volumeMount)
+	}
+
+	// IBMSE specific configuration
+	if r.kbsConfig.Spec.IbmSEConfigSpec.CertStorePvc != "" {
+		volume, err := r.createPVCVolume(ctx, r.kbsConfig.Spec.IbmSEConfigSpec.CertStorePvc)
+		if err != nil {
+			return nil, err
+		}
+		volumeMount = createVolumeMount(volume.Name, ibmSePath)
+		volumes = append(volumes, *volume)
+		kbsVM = append(kbsVM, volumeMount)
+	}
+
 	// auth-secret
-	volume, err = r.createAuthSecretVolume(ctx, "auth-secret")
+	volume, err = r.createSecretVolume(ctx, "auth-secret", r.kbsConfig.Spec.KbsAuthSecretName)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +415,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 	// https
 	// TBD: Make https as must going forward
 	if r.isHttpsConfigPresent() {
-		volume, err = r.createHttpsKeyVolume(ctx, "https-key")
+		volume, err = r.createSecretVolume(ctx, "https-key", r.kbsConfig.Spec.KbsHttpsKeySecretName)
 		if err != nil {
 			return nil, err
 		}
@@ -378,7 +423,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 		volumeMount = createVolumeMount(volume.Name, filepath.Join(kbsDefaultConfigPath, volume.Name))
 		kbsVM = append(kbsVM, volumeMount)
 
-		volume, err = r.createHttpsCertVolume(ctx, "https-cert")
+		volume, err = r.createSecretVolume(ctx, "https-cert", r.kbsConfig.Spec.KbsHttpsCertSecretName)
 		if err != nil {
 			return nil, err
 		}
@@ -399,7 +444,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 	}
 
 	// reference-values
-	volume, err = r.createRvpsRefValuesConfigMapVolume(ctx, "reference-values")
+	volume, err = r.createConfigMapVolume(ctx, "reference-values", r.kbsConfig.Spec.KbsRvpsRefValuesConfigMapName)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +458,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 		rvpsVM = append(rvpsVM, volumeMount)
 
 		// as-config
-		volume, err = r.createAsConfigMapVolume(ctx, "as-config")
+		volume, err = r.createConfigMapVolume(ctx, "as-config", r.kbsConfig.Spec.KbsAsConfigMapName)
 		if err != nil {
 			return nil, err
 		}
@@ -422,7 +467,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 		asVM = append(asVM, volumeMount)
 
 		// rvps-config
-		volume, err = r.processRvpsConfigMapVolume(ctx, "rvps-config")
+		volume, err = r.createConfigMapVolume(ctx, "rvps-config", r.kbsConfig.Spec.KbsRvpsConfigMapName)
 		if err != nil {
 			return nil, err
 		}
@@ -600,8 +645,16 @@ func (r *KbsConfigReconciler) isHttpsConfigPresent() bool {
 // updateKbsDeployment updates an existing deployment for the KBS instance
 // Errors are logged by the callee and hence no error is logged in this method
 func (r *KbsConfigReconciler) updateKbsDeployment(ctx context.Context, deployment *appsv1.Deployment) error {
+	// re-generates the deployment
+	newDeployment, err := r.newKbsDeployment(ctx)
+	if err != nil {
+		return err
+	}
 
-	err := r.Client.Update(ctx, deployment)
+	// overwrites the template spec, if any changes
+	deployment.Spec.Template.Spec = *newDeployment.Spec.Template.Spec.DeepCopy()
+
+	err = r.Client.Update(ctx, deployment)
 	if err != nil {
 		return err
 	} else {
@@ -680,7 +733,10 @@ func configMapToKbsConfigMapper(c client.Client, log logr.Logger) (handler.MapFu
 			if kbsConfig.Spec.KbsConfigMapName == configMap.Name ||
 				kbsConfig.Spec.KbsAsConfigMapName == configMap.Name ||
 				kbsConfig.Spec.KbsRvpsConfigMapName == configMap.Name ||
-				kbsConfig.Spec.KbsRvpsRefValuesConfigMapName == configMap.Name {
+				kbsConfig.Spec.KbsRvpsRefValuesConfigMapName == configMap.Name ||
+				kbsConfig.Spec.KbsAttestationPolicyConfigMapName == configMap.Name ||
+				kbsConfig.Spec.KbsResourcePolicyConfigMapName == configMap.Name ||
+				kbsConfig.Spec.TdxConfigSpec.KbsTdxConfigMapName == configMap.Name {
 
 				requests = append(requests, reconcile.Request{
 					NamespacedName: types.NamespacedName{

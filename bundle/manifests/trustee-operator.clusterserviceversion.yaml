@@ -19,10 +19,13 @@ metadata:
             "namespace": "kbs-operator-system"
           },
           "spec": {
+            "kbsAttestationPolicyConfigMapName": "attestation-policy",
             "kbsAuthSecretName": "kbs-auth-public-key",
             "kbsConfigMapName": "kbs-config",
             "kbsDeploymentType": "AllInOneDeployment",
-            "kbsRvpsRefValuesConfigMapName": "rvps-reference-values"
+            "kbsResourcePolicyConfigMapName": "resource-policy",
+            "kbsRvpsRefValuesConfigMapName": "rvps-reference-values",
+            "kbsTdxConfigMapName": "tdx-config"
           }
         }
       ]

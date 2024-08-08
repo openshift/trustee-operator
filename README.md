@@ -9,15 +9,19 @@ The operator manages a Kubernetes custom resource named: `KbsConfig`. Following 
 `KbsConfig` custom resource definition
 
 ```golang
+// KbsConfigSpec defines the desired state of KbsConfig
 type KbsConfigSpec struct {
-
   // KbsConfigMapName is the name of the configmap that contains the KBS configuration
   KbsConfigMapName string `json:"kbsConfigMapName,omitempty"`
 
   // KbsAsConfigMapName is the name of the configmap that contains the KBS AS configuration
+  // Required only when MicroservicesDeployment is set
+  // +optional
   KbsAsConfigMapName string `json:"kbsAsConfigMapName,omitempty"`
 
   // KbsRvpsConfigMapName is the name of the configmap that contains the KBS RVPS configuration
+  // Required only when MicroservicesDeployment is set
+  // +optional
   KbsRvpsConfigMapName string `json:"kbsRvpsConfigMapName,omitempty"`
 
   // kbsRvpsRefValuesConfigMapName is the name of the configmap that contains the RVPS reference values
@@ -27,27 +31,59 @@ type KbsConfigSpec struct {
   KbsAuthSecretName string `json:"kbsAuthSecretName,omitempty"`
 
   // KbsServiceType is the type of service to create for KBS
+  // Default value is ClusterIP
+  // +optional
   KbsServiceType corev1.ServiceType `json:"kbsServiceType,omitempty"`
 
   // KbsDeploymentType is the type of KBS deployment
   // It can assume one of the following values:
   //    AllInOneDeployment: all the KBS components will be deployed in the same container
-  //    MicroservicesDeployment: all the KBS components will be deployed in separate containers (part of the same Kubernetes pod)
+  //    MicroservicesDeployment: all the KBS components will be deployed in separate containers
+  // +kubebuilder:validation:Enum=AllInOneDeployment;MicroservicesDeployment
+  // Default value is AllInOneDeployment
+  // +optional
   KbsDeploymentType DeploymentType `json:"kbsDeploymentType,omitempty"`
- 
+
   // KbsHttpsKeySecretName is the name of the secret that contains the KBS https private key
   KbsHttpsKeySecretName string `json:"kbsHttpsKeySecretName,omitempty"`
 
   // KbsHttpsCertSecretName is the name of the secret that contains the KBS https certificate
   KbsHttpsCertSecretName string `json:"kbsHttpsCertSecretName,omitempty"`
 
-  // KbsHttpsKeySecretName is the name of the secret that contains the KBS https private key
-  KbsHttpsKeySecretName string `json:"kbsHttpsKeySecretName,omitempty"`
-
   // KbsSecretResources is an array of secret names that contain the keys required by clients
+  // +optional
   KbsSecretResources []string `json:"kbsSecretResources,omitempty"`
+
+  // KbsAttestationPolicyConfigMapName is the name of the configmap that contains the Attestation Policy
+  // +optional
+  KbsAttestationPolicyConfigMapName string `json:"kbsAttestationPolicyConfigMapName,omitempty"`
+
+  // KbsResourcePolicyConfigMapName is the name of the configmap that contains the Resource Policy
+  // +optional
+  KbsResourcePolicyConfigMapName string `json:"kbsResourcePolicyConfigMapName,omitempty"`
+
+  // TdxConfigSpec is the struct that hosts the TDX specific configuration
+  // +optional
+  TdxConfigSpec TdxConfigSpec `json:"tdxConfigSpec,omitempty"`
+
+  // IbmSEConfigSpec is the struct that hosts the IBMSE specific configuration
+  // +optional
+  IbmSEConfigSpec IbmSEConfigSpec `json:"ibmSEConfigSpec,omitempty"`
 }
-```
+
+// IbmSEConfigSpec defines the desired state for IBMSE configuration
+type IbmSEConfigSpec struct {
+  // certStorePvc is the name of the PeristentVolumeClaim where certificates/keys are mounted
+  // +optional
+  CertStorePvc string `json:"certStorePvc,omitempty"`
+}
+
+// TdxConfigSpec defines the desired state for TDX configuration
+type TdxConfigSpec struct {
+  // kbsTdxConfigMapName is the name of the configmap containing sgx_default_qcnl.conf file
+  // +optional
+  KbsTdxConfigMapName string `json:"kbsTdxConfigMapName,omitempty"`
+}```
 
 Note: the default deployment type is ```MicroservicesDeployment```.
 The examples below apply to this mode.
@@ -133,6 +169,16 @@ spec:
   kbsHttpsCertSecretName: kbs-https-certificate
   # K8s Secrets to be made available to KBS clients
   kbsSecretResources: ["kbsres1"]
+  # Attestation policy
+  kbsAttestationPolicyConfigMapName: attestation-policy
+  # Resource policy
+  kbsResourcePolicyConfigMapName: resource-policy
+  # TDX settings
+  tdxConfigSpec:
+    kbsTdxConfigMapName: tdx-config-sample
+  # IBMSE settings
+  ibmSEConfigSpec:
+    certStorePvc: ibmse-pvc
 ```
 
 ## Getting Started
@@ -216,6 +262,10 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
   ```
 
   It is also possible to create the K8s secrets (a commented out example is provided in the [kustomization.yaml](config/samples/microservices/kustomization.yaml)). To enable the secrets you'd need to uncomment the relevant secret generator entry and patch.
+
+### IBM Secure Execution
+
+For IBM SE specific configuration, please refer to [ibmse.md](docs/ibmse.md).
   
 ### Uninstall CRDs
 
