@@ -1,0 +1,11 @@
+{
+    "packageRules": [
+        {
+            "matchPackageNames": [
+                "quay.io/konflux-ci/**"
+            ],
+            "automerge": true,
+            "automergeType": "pr"
+        }
+    ]
+}
