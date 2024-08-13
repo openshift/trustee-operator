@@ -25,7 +25,9 @@ metadata:
             "kbsDeploymentType": "AllInOneDeployment",
             "kbsResourcePolicyConfigMapName": "resource-policy",
             "kbsRvpsRefValuesConfigMapName": "rvps-reference-values",
-            "kbsTdxConfigMapName": "tdx-config"
+            "tdxConfigSpec": {
+              "kbsTdxConfigMapName": "tdx-config"
+            }
           }
         }
       ]
