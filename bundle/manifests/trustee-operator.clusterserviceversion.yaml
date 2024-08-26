@@ -31,7 +31,7 @@ metadata:
       ]
     capabilities: Basic Install
     categories: "Security"
-    containerImage: "registry.stage.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9-operator@sha256:76d8bd2dc024e13acc121286b061e4e36c19fe563df8c54c411cb49dca8e2660"
+    containerImage: "quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator@sha256:e09062c2cbceac82d30e13ffbaaebadbeddaaed5ed250c6fe13e3766a165e34c"
     createdAt: "2024-06-07T10:06:06Z"
     support: "Confidential Containers Community"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
@@ -228,12 +228,12 @@ spec:
                     fieldRef:
                       fieldPath: metadata.namespace
                 - name: KBS_IMAGE_NAME
-                  value: "registry.stage.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9@sha256:c651c01bb3d1a17ce836f9fd1fd15cedd3a0d31b24c308cb2a007322a3bd5a63"
+                  value: "quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee@sha256:c651c01bb3d1a17ce836f9fd1fd15cedd3a0d31b24c308cb2a007322a3bd5a63"
                 - name: AS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
                 - name: RVPS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/rvps:latest
-                image: "registry.stage.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9-operator@sha256:76d8bd2dc024e13acc121286b061e4e36c19fe563df8c54c411cb49dca8e2660"
+                image: "quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator@sha256:e09062c2cbceac82d30e13ffbaaebadbeddaaed5ed250c6fe13e3766a165e34c"
                 livenessProbe:
                   httpGet:
                     path: /healthz
