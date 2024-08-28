@@ -16,7 +16,7 @@ metadata:
               "app.kubernetes.io/part-of": "trustee-operator"
             },
             "name": "kbsconfig-sample-sample",
-            "namespace": "kbs-operator-system"
+            "namespace": "trustee-operator-system"
           },
           "spec": {
             "kbsAttestationPolicyConfigMapName": "attestation-policy",
@@ -36,6 +36,7 @@ metadata:
     containerImage: "quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator@sha256:e09062c2cbceac82d30e13ffbaaebadbeddaaed5ed250c6fe13e3766a165e34c"
     createdAt: "2024-06-07T10:06:06Z"
     support: "Confidential Containers Community"
+    operatorframework.io/suggested-namespace: trustee-operator-system
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     features.operators.openshift.io/cnf: "false"
@@ -301,13 +302,13 @@ spec:
         serviceAccountName: trustee-operator-controller-manager
     strategy: deployment
   installModes:
-  - supported: false
+  - supported: true
     type: OwnNamespace
-  - supported: false
+  - supported: true
     type: SingleNamespace
   - supported: false
     type: MultiNamespace
-  - supported: true
+  - supported: false
     type: AllNamespaces
   keywords:
   - trustee
