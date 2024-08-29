@@ -142,6 +142,8 @@ spec:
             args:
               - run
               - bundle
+              - --timeout
+              - 10m
               - --namespace
               - "$(params.namespace)"
               - "$(params.bundleImage)"
