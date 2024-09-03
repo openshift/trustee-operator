@@ -4,4 +4,5 @@ metadata:
   name: kbsconfig-sample
   namespace: trustee-operator-system
 spec:
-  kbsRvpsRefValuesConfigMapName: rvps-reference-values
+  KbsEnvVars: 
+    RUST_LOG: debug

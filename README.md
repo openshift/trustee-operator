@@ -95,7 +95,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: kbs-config-grpc
-  namespace: kbs-operator-system
+  namespace: trustee-operator-system
 data:
   kbs-config.json: |
     {
@@ -122,7 +122,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: as-config-grpc
-  namespace: kbs-operator-system
+  namespace: trustee-operator-system
 data:
   as-config.json: |
     {
@@ -148,7 +148,7 @@ apiVersion: confidentialcontainers.org/v1alpha1
 kind: KbsConfig
 metadata:  
   name: kbsconfig-sample
-  namespace: kbs-operator-system
+  namespace: trustee-operator-system
 spec:
   # KBS configuration
   kbsConfigMapName: kbs-config
@@ -218,6 +218,8 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
 
   It is recommended to uncomment the secret generation for the trustee authorization in the  [kustomization.yaml](config/samples/microservices/kustomization.yaml), for both public and private key (`kbs-auth-public-key` and `kbs-client` secrets)
 
+  For enabling logs with DEBUG severity, uncomment the `patch-env-vars.yaml` line in the  [kustomization.yaml](config/samples/microservices/kustomization.yaml).
+
   ```sh
   cd config/samples/microservices
   # or config/samples/all-in-one for the integrated mode
@@ -237,14 +239,14 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
   kind: ConfigMap
   metadata:
     name: rvps-reference-values
-    namespace: kbs-operator-system
+    namespace: trustee-operator-system
   data:
     reference-values.json: |
       apiVersion: v1
       kind: ConfigMap
       metadata:
         name: rvps-reference-values
-        namespace: kbs-operator-system
+        namespace: trustee-operator-system
       data:
         reference-values.json: |
           [

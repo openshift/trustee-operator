@@ -2,38 +2,13 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
   annotations:
-    alm-examples: |-
-      [
-        {
-          "apiVersion": "confidentialcontainers.org/v1alpha1",
-          "kind": "KbsConfig",
-          "metadata": {
-            "labels": {
-              "app.kubernetes.io/created-by": "trustee-operator",
-              "app.kubernetes.io/instance": "kbsconfig-sample",
-              "app.kubernetes.io/managed-by": "kustomize",
-              "app.kubernetes.io/name": "kbsconfig",
-              "app.kubernetes.io/part-of": "trustee-operator"
-            },
-            "name": "kbsconfig-sample-sample",
-            "namespace": "kbs-operator-system"
-          },
-          "spec": {
-            "kbsAttestationPolicyConfigMapName": "attestation-policy",
-            "kbsAuthSecretName": "kbs-auth-public-key",
-            "kbsConfigMapName": "kbs-config",
-            "kbsDeploymentType": "AllInOneDeployment",
-            "kbsResourcePolicyConfigMapName": "resource-policy",
-            "kbsRvpsRefValuesConfigMapName": "rvps-reference-values",
-            "kbsTdxConfigMapName": "tdx-config"
-          }
-        }
-      ]
+    alm-examples: '[]'
     capabilities: Basic Install
     categories: "Security"
     containerImage: "quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator@sha256:e09062c2cbceac82d30e13ffbaaebadbeddaaed5ed250c6fe13e3766a165e34c"
     createdAt: "2024-06-07T10:06:06Z"
     support: "Confidential Containers Community"
+    operatorframework.io/suggested-namespace: trustee-operator-system
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     features.operators.openshift.io/cnf: "false"
@@ -299,13 +274,13 @@ spec:
         serviceAccountName: trustee-operator-controller-manager
     strategy: deployment
   installModes:
-  - supported: false
+  - supported: true
     type: OwnNamespace
-  - supported: false
+  - supported: true
     type: SingleNamespace
   - supported: false
     type: MultiNamespace
-  - supported: true
+  - supported: false
     type: AllNamespaces
   keywords:
   - trustee
