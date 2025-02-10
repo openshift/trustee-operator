@@ -35,7 +35,14 @@ spec:
   - name: hermetic
     value: "true"
   pipelineRef:
-    name: bundle-build-pipeline
+    resolver: bundles
+    params:
+    - name: name
+      value: docker-build
+    - name: bundle
+      value: quay.io/konflux-ci/tekton-catalog/pipeline-docker-build:devel@sha256:3fc8baf094e3e2e95431f2b0f3cb56a29b4c7d15dccd5cd286fd37cbc4637426
+    - name: kind
+      value: pipeline
   taskRunTemplate: {}
   workspaces:
   - name: workspace
