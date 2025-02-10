@@ -35,7 +35,7 @@ spec:
     resolver: bundles
     params:
     - name: name
-      value: docker-build
+      value: tekton-bundle-builder
     - name: bundle
       value: quay.io/konflux-ci/tekton-catalog/pipeline-tekton-bundle-builder:devel@sha256:4085f18426a3cad1699fba8e4f45bdef128eb23da1af501147afcdf702b4b209
     - name: kind
