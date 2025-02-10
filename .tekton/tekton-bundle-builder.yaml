@@ -1,0 +1,330 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  labels:
+    pipelines.openshift.io/runtime: ""
+    pipelines.openshift.io/strategy: ""
+    pipelines.openshift.io/used-by: ""
+  name: tekton-bundle-builder
+spec:
+  finally:
+    - name: show-summary
+      params:
+        - name: pipelinerun-name
+          value: $(context.pipelineRun.name)
+        - name: git-url
+          value: $(tasks.clone-repository.results.url)?rev=$(tasks.clone-repository.results.commit)
+        - name: image-url
+          value: $(params.output-image)
+        - name: build-task-status
+          value: $(tasks.build-image-index.status)
+      taskRef:
+        params:
+          - name: name
+            value: summary
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-summary:0.2@sha256:870d9a04d9784840a90b7bf6817cd0d0c4edfcda04b1ba1868cae625a3c3bfcc
+          - name: kind
+            value: task
+        resolver: bundles
+      workspaces:
+        - name: workspace
+          workspace: workspace
+  params:
+    - description: Source Repository URL
+      name: git-url
+      type: string
+    - default: ""
+      description: Revision of the Source Repository
+      name: revision
+      type: string
+    - description: Fully Qualified Output Image
+      name: output-image
+      type: string
+    - default: .
+      description: Path to the source code of an application's component from where to build image.
+      name: path-context
+      type: string
+    - default: Dockerfile
+      description: Path to the Dockerfile inside the context specified by parameter path-context
+      name: dockerfile
+      type: string
+    - default: "false"
+      description: Force rebuild image
+      name: rebuild
+      type: string
+    - default: "false"
+      description: Skip checks against built image
+      name: skip-checks
+      type: string
+    - default: "false"
+      description: Execute the build with network isolation
+      name: hermetic
+      type: string
+    - default: ""
+      description: Build dependencies to be prefetched by Cachi2
+      name: prefetch-input
+      type: string
+    - default: ""
+      description: Image tag expiration time, time values could be something like 1h, 2d, 3w for hours, days, and weeks, respectively.
+      name: image-expires-after
+    - default: "false"
+      description: Build a source image.
+      name: build-source-image
+      type: string
+    - default: "false"
+      description: Add built image into an OCI image index
+      name: build-image-index
+      type: string
+  results:
+    - name: IMAGE_URL
+      value: $(tasks.build-image-index.results.IMAGE_URL)
+    - name: IMAGE_DIGEST
+      value: $(tasks.build-image-index.results.IMAGE_DIGEST)
+    - name: CHAINS-GIT_URL
+      value: $(tasks.clone-repository.results.url)
+    - name: CHAINS-GIT_COMMIT
+      value: $(tasks.clone-repository.results.commit)
+  tasks:
+    - name: init
+      params:
+        - name: image-url
+          value: $(params.output-image)
+        - name: rebuild
+          value: $(params.rebuild)
+        - name: skip-checks
+          value: $(params.skip-checks)
+      taskRef:
+        params:
+          - name: name
+            value: init
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-init:0.2@sha256:63eb4a4c0cfb491276bff86fdad1c96bf238506388848e79001058450a8e843a
+          - name: kind
+            value: task
+        resolver: bundles
+    - name: clone-repository
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.revision)
+      runAfter:
+        - init
+      taskRef:
+        params:
+          - name: name
+            value: git-clone
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-git-clone:0.1@sha256:d091a9e19567a4cbdc5acd57903c71ba71dc51d749a4ba7477e689608851e981
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(tasks.init.results.build)
+          operator: in
+          values:
+            - "true"
+      workspaces:
+        - name: output
+          workspace: workspace
+        - name: basic-auth
+          workspace: git-auth
+    - name: prefetch-dependencies
+      params:
+        - name: input
+          value: $(params.prefetch-input)
+      runAfter:
+        - clone-repository
+      taskRef:
+        params:
+          - name: name
+            value: prefetch-dependencies
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-prefetch-dependencies:0.2@sha256:54d41cb14ef76d73f372a7e4e8aeef4c2a667e937049398a056408916db727ac
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(params.prefetch-input)
+          operator: notin
+          values:
+            - ""
+      workspaces:
+        - name: source
+          workspace: workspace
+        - name: git-basic-auth
+          workspace: git-auth
+        - name: netrc
+          workspace: netrc
+    - name: build-container
+      params:
+        - name: IMAGE
+          value: $(params.output-image)
+        - name: CONTEXT
+          value: $(params.path-context)
+      runAfter:
+        - prefetch-dependencies
+      taskRef:
+        params:
+          - name: name
+            value: tkn-bundle
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-tkn-bundle:0.1@sha256:1ec8d190f03020cc8cb1a32a11b76aa2064d18c52f2eda81839d4039ceceff0d
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(tasks.init.results.build)
+          operator: in
+          values:
+            - "true"
+      workspaces:
+        - name: source
+          workspace: workspace
+    - name: build-image-index
+      params:
+        - name: IMAGE
+          value: $(params.output-image)
+        - name: COMMIT_SHA
+          value: $(tasks.clone-repository.results.commit)
+        - name: IMAGE_EXPIRES_AFTER
+          value: $(params.image-expires-after)
+        - name: ALWAYS_BUILD_INDEX
+          value: $(params.build-image-index)
+        - name: IMAGES
+          value:
+            - $(tasks.build-container.results.IMAGE_URL)@$(tasks.build-container.results.IMAGE_DIGEST)
+      runAfter:
+        - build-container
+      taskRef:
+        params:
+          - name: name
+            value: build-image-index
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-build-image-index:0.1@sha256:0c2270d1b24fcbaa6fe82b6d045b715a5f24f55d099a10f65297671e2ee421e6
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(tasks.init.results.build)
+          operator: in
+          values:
+            - "true"
+    - name: sast-coverity-check
+      params:
+        - name: image-url
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+      runAfter:
+        - coverity-availability-check
+      taskRef:
+        params:
+          - name: name
+            value: sast-coverity-check
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-sast-coverity-check:0.2@sha256:abc3445b50378f0a93f9560f3f93c1593f196c9612570cce0b0be890e48a68cc
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(params.skip-checks)
+          operator: in
+          values:
+            - "false"
+        - input: $(tasks.coverity-availability-check.results.STATUS)
+          operator: in
+          values:
+            - success
+      workspaces:
+        - name: source
+          workspace: workspace
+    - name: sast-unicode-check
+      params:
+        - name: image-url
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+      runAfter:
+        - build-image-index
+      taskRef:
+        params:
+          - name: name
+            value: sast-unicode-check
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-sast-unicode-check:0.1@sha256:b3e7807546635e03487eb61aff64a8e03c2dccb3d08939dcee50cff0f04fb8b0
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(params.skip-checks)
+          operator: in
+          values:
+            - "false"
+      workspaces:
+        - name: workspace
+          workspace: workspace
+    - name: apply-tags
+      params:
+        - name: IMAGE
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+      runAfter:
+        - build-image-index
+      taskRef:
+        params:
+          - name: name
+            value: apply-tags
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-apply-tags:0.1@sha256:5e5f290359fd34ae4cc77cbbba6ef8c9907d752572d6dc2a00f5a4c504eb48bb
+          - name: kind
+            value: task
+        resolver: bundles
+    - name: push-dockerfile
+      params:
+        - name: IMAGE
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+        - name: IMAGE_DIGEST
+          value: $(tasks.build-image-index.results.IMAGE_DIGEST)
+        - name: DOCKERFILE
+          value: $(params.dockerfile)
+        - name: CONTEXT
+          value: $(params.path-context)
+      runAfter:
+        - build-image-index
+      taskRef:
+        params:
+          - name: name
+            value: push-dockerfile
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-push-dockerfile:0.1@sha256:ba6b3182b8f7e1f9054b67cdafb338140136bb357c8d434cf28f6d569b5cb07f
+          - name: kind
+            value: task
+        resolver: bundles
+      workspaces:
+        - name: workspace
+          workspace: workspace
+    - name: rpms-signature-scan
+      params:
+        - name: image-url
+          value: $(tasks.build-image-index.results.IMAGE_URL)
+        - name: image-digest
+          value: $(tasks.build-image-index.results.IMAGE_DIGEST)
+      runAfter:
+        - build-image-index
+      taskRef:
+        params:
+          - name: name
+            value: rpms-signature-scan
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-rpms-signature-scan:0.2@sha256:e603b3df510aeefeaa12e8778c4642b21743cb0ae68704359dc7ffd2814249d2
+          - name: kind
+            value: task
+        resolver: bundles
+      when:
+        - input: $(params.skip-checks)
+          operator: in
+          values:
+            - "false"
+  workspaces:
+    - name: workspace
+    - name: git-auth
+      optional: true
+    - name: netrc
+      optional: true
