@@ -37,7 +37,7 @@ spec:
     - name: name
       value: docker-build
     - name: bundle
-      value: quay.io/konflux-ci/tekton-catalog/pipeline-docker-build:devel@sha256:3fc8baf094e3e2e95431f2b0f3cb56a29b4c7d15dccd5cd286fd37cbc4637426
+      value: quay.io/konflux-ci/tekton-catalog/pipeline-tekton-bundle-builder:devel@sha256:4085f18426a3cad1699fba8e4f45bdef128eb23da1af501147afcdf702b4b209
     - name: kind
       value: pipeline
   taskRunTemplate: {}
