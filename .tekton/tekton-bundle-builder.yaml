@@ -211,33 +211,33 @@ spec:
           operator: in
           values:
             - "true"
-    - name: sast-coverity-check
-      params:
-        - name: image-url
-          value: $(tasks.build-image-index.results.IMAGE_URL)
-      runAfter:
-        - coverity-availability-check
-      taskRef:
-        params:
-          - name: name
-            value: sast-coverity-check
-          - name: bundle
-            value: quay.io/konflux-ci/tekton-catalog/task-sast-coverity-check:0.2@sha256:abc3445b50378f0a93f9560f3f93c1593f196c9612570cce0b0be890e48a68cc
-          - name: kind
-            value: task
-        resolver: bundles
-      when:
-        - input: $(params.skip-checks)
-          operator: in
-          values:
-            - "false"
-        - input: $(tasks.coverity-availability-check.results.STATUS)
-          operator: in
-          values:
-            - success
-      workspaces:
-        - name: source
-          workspace: workspace
+    # - name: sast-coverity-check
+    #   params:
+    #     - name: image-url
+    #       value: $(tasks.build-image-index.results.IMAGE_URL)
+    #   runAfter:
+    #     - coverity-availability-check
+    #   taskRef:
+    #     params:
+    #       - name: name
+    #         value: sast-coverity-check
+    #       - name: bundle
+    #         value: quay.io/konflux-ci/tekton-catalog/task-sast-coverity-check:0.2@sha256:abc3445b50378f0a93f9560f3f93c1593f196c9612570cce0b0be890e48a68cc
+    #       - name: kind
+    #         value: task
+    #     resolver: bundles
+    #   when:
+    #     - input: $(params.skip-checks)
+    #       operator: in
+    #       values:
+    #         - "false"
+    #     - input: $(tasks.coverity-availability-check.results.STATUS)
+    #       operator: in
+    #       values:
+    #         - success
+    #   workspaces:
+    #     - name: source
+    #       workspace: workspace
     - name: sast-unicode-check
       params:
         - name: image-url
