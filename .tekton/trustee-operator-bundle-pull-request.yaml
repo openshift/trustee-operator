@@ -35,7 +35,7 @@ spec:
   - name: hermetic
     value: "true"
   pipelineRef:
-    name: bundle-build-pipeline
+    name: tekton-bundle-builder
   taskRunTemplate: {}
   workspaces:
   - name: workspace
