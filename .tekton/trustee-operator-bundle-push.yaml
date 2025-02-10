@@ -37,7 +37,7 @@ spec:
     - name: name
       value: tekton-bundle-builder
     - name: bundle
-      value: quay.io/konflux-ci/tekton-catalog/pipeline-tekton-bundle-builder:devel@sha256:cf852dc5ba45f9dce148442e4dbb343eb67315729fecd3af1f05c054a0707739
+      value: quay.io/konflux-ci/tekton-catalog/pipeline-tekton-bundle-builder:devel@sha256:e8c9c981ad60801e6eadc77b5838bd20fe18bd3a6a94f22ec6b2e5f3c3a03106
     - name: kind
       value: pipeline
   taskRunTemplate: {}
