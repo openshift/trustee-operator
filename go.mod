@@ -3,7 +3,7 @@ module github.com/confidential-containers/trustee-operator
 go 1.21
 
 require (
-	github.com/go-logr/logr v1.4.1
+	github.com/go-logr/logr v1.4.2
 	github.com/onsi/ginkgo/v2 v2.17.2
 	github.com/onsi/gomega v1.33.0
 	k8s.io/api v0.29.3
