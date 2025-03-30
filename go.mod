@@ -1,6 +1,8 @@
 module github.com/confidential-containers/trustee-operator
 
-go 1.22.0
+go 1.23.0
+
+toolchain go1.23.7
 
 require (
 	github.com/go-logr/logr v1.4.2
@@ -75,7 +77,7 @@ require (
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	golang.org/x/time v0.3.0 // indirect
+	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240528184218-531527333157 // indirect
