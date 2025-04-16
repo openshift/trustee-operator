@@ -382,9 +382,9 @@ spec:
         operator: in
         values:
           - "false"
-      workspaces:
-        - name: workspace
-          workspace: workspace
+    workspaces:
+      - name: workspace
+        workspace: workspace
   - name: apply-tags
     params:
     - name: IMAGE
