@@ -10,7 +10,7 @@ ITA_KEY="${ITA_KEY:-}"
 if [ -n "$ITA_KEY" ]; then
 	TDX=true
 fi
-DEFAULT_IMAGE=quay.io/openshift_sandboxed_containers/kbs:v0.10.1
+DEFAULT_IMAGE=quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee:1c68cd3e133df16879e551138f468a6b082a93d1
 if [ -n "$ITA_KEY" ]; then
     DEFAULT_IMAGE+="-ita"
 fi
@@ -36,6 +36,14 @@ function check_jq() {
 function check_openssl() {
     if ! command -v openssl &>/dev/null; then
         echo "openssl command not found. Please install the openssl CLI tool."
+        return 1
+    fi
+}
+
+# Function to check if the git command is available
+function check_git() {
+    if ! command -v git &>/dev/null; then
+        echo "git command not found. Please install git."
         return 1
     fi
 }
@@ -203,6 +211,26 @@ function create_trustee_artefacts() {
 
 }
 
+function set_fbc_catalog_image() {
+    latest_fbc_commit=$(git ls-remote https://github.com/openshift/trustee-fbc.git HEAD | cut -f 1)
+    ocp_version=$(oc version --output json | jq '.openshiftVersion')
+    image_prefix=quay.io/redhat-user-workloads/ose-osc-tenant
+    if [[ $ocp_version == 4.15* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc-4-15/trustee-fbc-4-15
+    elif [[ $ocp_version == 4.16* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc/trustee-fbc-4-16
+    elif [[ $ocp_version == 4.17* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc-4-17
+    elif [[ $ocp_version == 4.18* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc-4-18
+    fi
+    FBC_IMAGE+=:$latest_fbc_commit
+}
+
 # Function to apply the operator manifests
 function apply_operator_manifests() {
     # Apply the manifests, error exit if any of them fail
@@ -211,7 +239,10 @@ function apply_operator_manifests() {
     if [[ "$GA_RELEASE" == "true" ]]; then
         oc apply -f subs-ga.yaml || return 1
     else
+        set_fbc_catalog_image
+        envsubst < "trustee_catalog.yaml.in" > "trustee_catalog.yaml"
         oc apply -f trustee_catalog.yaml || return 1
+        rm -f trustee_catalog.yaml
         oc apply -f subs-upstream.yaml || return 1
     fi
 
@@ -362,6 +393,9 @@ check_oc || exit 1
 
 # Check if openssl command is available
 check_openssl || exit 1
+
+# Check if git command is available
+check_git || exit 1
 
 # Apply the operator manifests
 apply_operator_manifests || exit 1
