@@ -3,8 +3,8 @@ kind: PipelineRun
 metadata:
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/openshift/trustee-operator?rev={{revision}}
-    build.appstudio.redhat.com/commit_sha: '{{revision}}'
-    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    build.appstudio.redhat.com/commit_sha: "{{revision}}"
+    build.appstudio.redhat.com/target_branch: "{{target_branch}}"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-cel-expression: |
       event == "push" && target_branch == "main" && files.all.exists(path, path.matches('bundle*|tests/*|.tekton/*bundle*'))
@@ -17,37 +17,38 @@ metadata:
   namespace: ose-osc-tenant
 spec:
   params:
-  - name: git-url
-    value: '{{source_url}}'
-  - name: revision
-    value: '{{revision}}'
-  - name: build-source-image
-    value: "true"
-  - name: output-image
-    value: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator-bundle:{{revision}}
-  - name: dockerfile
-    value: bundle.Dockerfile
-  - name: hermetic
-    value: "true"
+    - name: git-url
+      value: "{{source_url}}"
+    - name: revision
+      value: "{{revision}}"
+    - name: build-source-image
+      value: "true"
+    - name: output-image
+      value: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator-bundle:{{revision}}
+    - name: dockerfile
+      value: bundle.Dockerfile
+    - name: hermetic
+      value: "true"
+    - name: build-operator-bundle
+      value: "true"
   pipelineRef:
-    name: bundle-build-pipeline
-  taskRunTemplate:
-    serviceAccountName: build-pipeline-trustee-operator-bundle
-  timeouts:
-    pipeline: 2h0m0s
+    name: docker-build
+  taskRunTemplate: {}
   workspaces:
-  - name: workspace
-    volumeClaimTemplate:
-      metadata:
-        creationTimestamp: null
-      spec:
-        accessModes:
-        - ReadWriteOnce
-        resources:
-          requests:
-            storage: 1Gi
-      status: {}
-  - name: git-auth
-    secret:
-      secretName: '{{ git_auth_secret }}'
+    - name: workspace
+      volumeClaimTemplate:
+        metadata:
+          creationTimestamp: null
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+        status: {}
+    - name: git-auth
+      secret:
+        secretName: "{{ git_auth_secret }}"
+  timeouts:
+    pipeline: "2h"
 status: {}
