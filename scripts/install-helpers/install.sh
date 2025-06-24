@@ -10,11 +10,16 @@ ITA_KEY="${ITA_KEY:-}"
 if [ -n "$ITA_KEY" ]; then
 	TDX=true
 fi
-DEFAULT_IMAGE=quay.io/openshift_sandboxed_containers/kbs:v0.10.1
+
+DEFAULT_IMAGE=quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee:345aef3985efea5d4f91ffbffb597cb44087b96a
+DEFAULT_TRUSTEE_OPERATOR_CSV=trustee-operator.v0.3.0
+
 if [ -n "$ITA_KEY" ]; then
     DEFAULT_IMAGE+="-ita"
 fi
+
 TRUSTEE_IMAGE=${TRUSTEE_IMAGE:-$DEFAULT_IMAGE}
+TRUSTEE_OPERATOR_CSV=${TRUSTEE_OPERATOR_CSV:-$DEFAULT_TRUSTEE_OPERATOR_CSV}
 
 # Function to check if the oc command is available
 function check_oc() {
@@ -36,6 +41,14 @@ function check_jq() {
 function check_openssl() {
     if ! command -v openssl &>/dev/null; then
         echo "openssl command not found. Please install the openssl CLI tool."
+        return 1
+    fi
+}
+
+# Function to check if the git command is available
+function check_git() {
+    if ! command -v git &>/dev/null; then
+        echo "git command not found. Please install git."
         return 1
     fi
 }
@@ -103,6 +116,37 @@ function wait_for_mcp() {
         statusDegraded=$(oc get mcp "$mcp" -o=jsonpath='{.status.conditions[?(@.type=="Degraded")].status}')
     done
 
+}
+
+# Function to approve installPlan tied to specific CSV to be available in specific namespace
+approve_installplan_for_target_csv() {
+    local ns="$1"
+    local target_csv="$2"
+    local timeout=300
+    local interval=5
+    local elapsed=0
+
+    echo "Waiting for InstallPlan with CSV '$target_csv' in namespace '$ns'..."
+
+    while [ $elapsed -lt "$timeout" ]; do
+        installplans=$(oc get installplan -n "$ns" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+        for ip in $installplans; do
+            csvs=$(oc get installplan "$ip" -n "$ns" -o jsonpath="{.spec.clusterServiceVersionNames[*]}" 2>/dev/null)
+            for csv in $csvs; do
+                if [ "$csv" == "$target_csv" ]; then
+                    echo "Found matching InstallPlan: $ip"
+                    echo "Approving InstallPlan: $ip"
+                    oc patch installplan "$ip" -n "$ns" -p '{"spec":{"approved":true}}' --type merge || return 1
+                    return 0
+                fi
+            done
+        done
+        sleep $interval
+        elapsed=$((elapsed + interval))
+    done
+
+    echo "Timed out waiting for InstallPlan with CSV '$target_csv' in namespace '$ns'"
+    return 1
 }
 
 # Function to set additional cluster-wide image pull secret
@@ -203,6 +247,29 @@ function create_trustee_artefacts() {
 
 }
 
+function set_fbc_catalog_image() {
+    latest_fbc_commit=$(git ls-remote https://github.com/openshift/trustee-fbc.git HEAD | cut -f 1)
+    ocp_version=$(oc version --output json | jq '.openshiftVersion')
+    image_prefix=quay.io/redhat-user-workloads/ose-osc-tenant
+    if [[ "$ocp_version" =~ 4\.15.* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc-4-15/trustee-fbc-4-15
+    elif [[ "$ocp_version" =~ 4\.16.* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc/trustee-fbc-4-16
+    elif [[ "$ocp_version" =~ 4\.17.* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc-4-17
+    elif [[ "$ocp_version" =~ 4\.18.* ]] ;
+    then
+        FBC_IMAGE=$image_prefix/trustee-fbc-4-18
+    else
+        echo "OCP version "$ocp_version" not supported yet!"
+        exit 1
+    fi
+    export FBC_IMAGE="$FBC_IMAGE:$latest_fbc_commit"
+}
+
 # Function to apply the operator manifests
 function apply_operator_manifests() {
     # Apply the manifests, error exit if any of them fail
@@ -210,8 +277,12 @@ function apply_operator_manifests() {
     oc apply -f og.yaml || return 1
     if [[ "$GA_RELEASE" == "true" ]]; then
         oc apply -f subs-ga.yaml || return 1
+	approve_installplan_for_target_csv trustee-operator-system "$TRUSTEE_OPERATOR_CSV" || return 1
     else
+        set_fbc_catalog_image
+        envsubst < "trustee_catalog.yaml.in" > "trustee_catalog.yaml"
         oc apply -f trustee_catalog.yaml || return 1
+        rm -f trustee_catalog.yaml
         oc apply -f subs-upstream.yaml || return 1
     fi
 
@@ -224,7 +295,7 @@ function override_trustee_image() {
         oc patch -n trustee-operator-system $CSV --type=json -p="[
         {
             "op": "replace",
-            "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/1/env/1/value",
+            "path": "/spec/install/spec/deployments/0/spec/template/spec/containers/0/env/1/value",
             "value": "$TRUSTEE_IMAGE"
         }
         ]"
@@ -363,8 +434,8 @@ check_oc || exit 1
 # Check if openssl command is available
 check_openssl || exit 1
 
-# Apply the operator manifests
-apply_operator_manifests || exit 1
+# Check if git command is available
+check_git || exit 1
 
 # If MIRRORING is true, then create the image mirroring config
 if [ "$MIRRORING" = true ]; then
