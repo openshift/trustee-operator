@@ -1,8 +1,8 @@
 module github.com/confidential-containers/trustee-operator
 
-go 1.23.0
+go 1.24.0
 
-toolchain go1.24.4
+toolchain go1.24.6
 
 require (
 	github.com/go-logr/logr v1.4.2
@@ -40,7 +40,7 @@ require (
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
+	github.com/google/pprof v0.0.0-20250903194437-c28834ac2320 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0 // indirect
 	github.com/imdario/mergo v0.3.6 // indirect
