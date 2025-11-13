@@ -5,14 +5,23 @@ metadata:
 spec:
   imageTagMirrors:
     - mirrors:
-        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee
-      source: registry.redhat.io/build-of-trustee
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee
+      source: registry.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator
+      source: registry.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9-operator
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator-bundle
+      source: registry.redhat.io/confidential-compute-attestation-tech-preview/trustee-operator-bundle
     - mirrors:
         - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee
       source: registry.redhat.io/build-of-trustee/trustee-rhel9
     - mirrors:
         - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator
       source: registry.redhat.io/build-of-trustee/trustee-rhel9-operator
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator-bundle
+      source: registry.redhat.io/build-of-trustee/trustee-operator-bundle
 ---
 apiVersion: config.openshift.io/v1
 kind: ImageDigestMirrorSet
@@ -21,11 +30,21 @@ metadata:
 spec:
   imageDigestMirrors:
     - mirrors:
-        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee
-      source: registry.redhat.io/build-of-trustee
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee
+      source: registry.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator
+      source: registry.redhat.io/confidential-compute-attestation-tech-preview/trustee-rhel9-operator
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator-bundle
+      source: registry.redhat.io/confidential-compute-attestation-tech-preview/trustee-operator-bundle
     - mirrors:
         - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee
       source: registry.redhat.io/build-of-trustee/trustee-rhel9
     - mirrors:
         - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator
       source: registry.redhat.io/build-of-trustee/trustee-rhel9-operator
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator-bundle
+      source: registry.redhat.io/build-of-trustee/trustee-operator-bundle
+
