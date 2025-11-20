@@ -105,6 +105,7 @@ func (r *KbsConfigReconciler) createConfigMapVolume(ctx context.Context, volumeN
 		return nil, err
 	}
 
+	defaultMode := int32(0o664)
 	volume := corev1.Volume{
 		Name: volumeName,
 		VolumeSource: corev1.VolumeSource{
@@ -112,6 +113,7 @@ func (r *KbsConfigReconciler) createConfigMapVolume(ctx context.Context, volumeN
 				LocalObjectReference: corev1.LocalObjectReference{
 					Name: configMapName,
 				},
+				DefaultMode: &defaultMode,
 			},
 		},
 	}
