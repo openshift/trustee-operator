@@ -11,8 +11,8 @@ if [ -n "$ITA_KEY" ]; then
 	TDX=true
 fi
 
-DEFAULT_IMAGE=quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee:345aef3985efea5d4f91ffbffb597cb44087b96a
-DEFAULT_TRUSTEE_OPERATOR_CSV=trustee-operator.v0.4.2
+DEFAULT_IMAGE=registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:123b1921375bbedba3a05590bd46e3f0fdb185349b0867058e52f4f512347fb6
+DEFAULT_TRUSTEE_OPERATOR_CSV=trustee-operator.v1.0.0
 
 if [ -n "$ITA_KEY" ]; then
     DEFAULT_IMAGE+="-ita"
