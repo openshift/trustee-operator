@@ -1,5 +1,9 @@
 # Build the manager binary
-FROM registry.redhat.io/ubi10/go-toolset as builder
+FROM registry.access.redhat.com/ubi9/go-toolset:1.25.3-1764620329 as builder
+
+# Required by the ubi based go-toolset image
+USER root
+
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -26,10 +30,10 @@ COPY internal/controller/ internal/controller/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
-FROM registry.access.redhat.com/ubi10/ubi-minimal
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1764578379
 
 # Install dependencies for FIPS compliance.
-RUN microdnf install -y openssl && microdnf clean all
+# RUN microdnf install -y openssl && microdnf clean all
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/manager .
@@ -56,7 +60,7 @@ LABEL distribution-scope=public
 LABEL release="1"
 LABEL url="https://access.redhat.com/"
 LABEL vendor="Red Hat, Inc."
-LABEL version="1"
+LABEL version="1.0.0"
 LABEL maintainer="Red Hat"
 LABEL io.openshift.tags=""
 
