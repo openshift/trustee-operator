@@ -389,6 +389,9 @@ spec:
         operator: in
         values:
         - "false"
+      workspaces:
+      - name: workspace
+        workspace: workspace
     - name: clamav-scan
       params:
       - name: image-digest
@@ -499,6 +502,9 @@ spec:
         operator: in
         values:
         - "false"
+      workspaces:
+      - name: workspace
+        workspace: workspace
     - name: sast-unicode-check
       params:
       - name: image-digest
@@ -521,6 +527,9 @@ spec:
         operator: in
         values:
         - "false"
+      workspaces:
+      - name: workspace
+        workspace: workspace
     - name: apply-tags
       params:
       - name: IMAGE_URL
@@ -584,6 +593,7 @@ spec:
         values:
         - "false"
     workspaces:
+    - name: workspace
     - name: git-auth
       optional: true
     - name: netrc
@@ -591,6 +601,17 @@ spec:
   taskRunTemplate:
     serviceAccountName: build-pipeline-trustee-operator-bundle
   workspaces:
+  - name: workspace
+    volumeClaimTemplate:
+      metadata:
+        creationTimestamp:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+      status: {}
   - name: git-auth
     secret:
       secretName: '{{ git_auth_secret }}'
