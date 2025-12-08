@@ -264,5 +264,8 @@ spec:
   provider:
     name: Red Hat
     url: https://github.com/confidential-containers
+  relatedImages:
+  - image: registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:71025d9895661e2ad932067e6320ce497c331a6fbe739a2eab3f765341e16f15
+    name: trustee
   replaces: trustee-operator.v0.4.2
   version: 1.0.0
