@@ -102,6 +102,10 @@ spec:
                 - AllInOneDeployment
                 - MicroservicesDeployment
                 type: string
+              kbsGpuAttestationPolicyConfigMapName:
+                description: KbsGpuAttestationPolicyConfigMapName is the name of the
+                  configmap that contains the GPU Attestation Policy
+                type: string
               kbsHttpsCertSecretName:
                 description: KbsHttpsCertSecretName is the name of the secret that
                   contains the KBS https certificate
@@ -124,7 +128,7 @@ spec:
                         mountPath:
                           description: |-
                             MountPath is the destination path in the trustee file system
-                            The default path is "/etc/kbs/certs" if not specified by the user
+                            The default path is "/opt/confidential-containers/attestation-service/kds-store/vcek" if not specified by the user
                           type: string
                         secretName:
                           description: SecretName is the name of the secret that maps
