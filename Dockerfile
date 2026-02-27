@@ -60,7 +60,7 @@ LABEL distribution-scope=public
 LABEL release="1"
 LABEL url="https://access.redhat.com/"
 LABEL vendor="Red Hat, Inc."
-LABEL version="1.0.0"
+LABEL version="1.1.0"
 LABEL maintainer="Red Hat"
 LABEL io.openshift.tags=""
 
