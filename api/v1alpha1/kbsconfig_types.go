@@ -55,7 +55,7 @@ type KbsLocalCertCacheEntry struct {
 	// SecretName is the name of the secret that maps to a local directory containing the certificates
 	SecretName string `json:"secretName"`
 	// MountPath is the destination path in the trustee file system
-	// The default path is "/etc/kbs/certs" if not specified by the user
+	// The default path is "/opt/confidential-containers/attestation-service/kds-store/vcek" if not specified by the user
 	// +optional
 	MountPath string `json:"mountPath"`
 }
@@ -134,6 +134,10 @@ type KbsConfigSpec struct {
 	// KbsAttestationPolicyConfigMapName is the name of the configmap that contains the Attestation Policy
 	// +optional
 	KbsAttestationPolicyConfigMapName string `json:"kbsAttestationPolicyConfigMapName,omitempty"`
+
+	// KbsGpuAttestationPolicyConfigMapName is the name of the configmap that contains the GPU Attestation Policy
+	// +optional
+	KbsGpuAttestationPolicyConfigMapName string `json:"kbsGpuAttestationPolicyConfigMapName,omitempty"`
 
 	// KbsResourcePolicyConfigMapName is the name of the configmap that contains the Resource Policy
 	// +optional

@@ -11,6 +11,7 @@ data:
     worker_count = 4
 
     [admin]
+    type = "DenyAll"
     insecure_api = true
     auth_public_key = "/etc/auth-secret/publicKey"
 
@@ -23,19 +24,19 @@ data:
     work_dir = "/opt/confidential-containers/attestation-service"
     policy_engine = "opa"
 
-      [attestation_service.attestation_token_broker]
-      type = "Ear"
-      policy_dir = "/opt/confidential-containers/attestation-service/policies"
+    [attestation_service.attestation_token_broker]
+    type = "Ear"
+    policy_dir = "/opt/confidential-containers/attestation-service/policies"
 
-      [attestation_service.attestation_token_config]
-      duration_min = 5
+    [attestation_service.attestation_token_config]
+    duration_min = 5
 
-      [attestation_service.rvps_config]
-      type = "BuiltIn"
-      
-        [attestation_service.rvps_config.storage]
-        type = "LocalJson"
-        file_path = "/opt/confidential-containers/rvps/reference-values/reference-values.json"
+    [attestation_service.rvps_config]
+    type = "BuiltIn"
+
+    [attestation_service.rvps_config.storage]
+    type = "LocalJson"
+    file_path = "/opt/confidential-containers/rvps/reference-values/reference-values.json"
 
     [[plugins]]
     name = "resource"

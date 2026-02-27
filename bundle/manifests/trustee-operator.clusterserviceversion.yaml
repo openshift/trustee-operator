@@ -8,7 +8,7 @@ metadata:
     containerImage: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:04a30e2c2f9010a38a20270fdbac09445bb28d46a67126d0b74396ae492ccea2"
     createdAt: "2024-06-07T10:06:06Z"
     operatorframework.io/suggested-namespace: trustee-operator-system
-    operators.operatorframework.io/builder: operator-sdk-v1.40.0
+    operators.operatorframework.io/builder: operator-sdk-v1.42.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     support: Confidential Containers Community
     features.operators.openshift.io/cnf: "false"
@@ -171,7 +171,7 @@ spec:
                 - name: KBS_IMAGE_NAME
                   value: "registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:da30d5c78cba2fa4b595487c500ffefededea4ff2f4e9ee4d8bdb7b13d8aba40"
                 - name: KBS_IMAGE_NAME_MICROSERVICES
-                  value: ghcr.io/confidential-containers/key-broker-service:v0.15.0
+                  value: ghcr.io/confidential-containers/key-broker-service:v0.17.0
                 - name: AS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
                 - name: RVPS_IMAGE_NAME
