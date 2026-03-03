@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/confidential-containers/trustee-operator
-  newTag: v1.0.0
+  newTag: v1.1.0
