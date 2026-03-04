@@ -41,7 +41,7 @@ vcek_sources = [
 type = "LocalJson"
 file_path = "/opt/confidential-containers/rvps/reference-values/reference-values.json"
 
-[attestation_service.verifier_config.nvidia_verifier.verifier]
+[attestation_service.verifier_config.nvidia_verifier]
 type = "Remote"
 nras_url = "https://nras.attestation.nvidia.com/v1/attest"
 
