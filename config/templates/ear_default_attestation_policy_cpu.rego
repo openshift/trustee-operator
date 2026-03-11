@@ -227,7 +227,11 @@ executables := 3 if {
   input.az_snp_vtpm
 
   input.az_snp_vtpm.measurement in query_reference_value("measurement")
+  input.az_snp_vtpm.tpm.pcr03 in query_reference_value("snp_pcr03")
+  input.az_snp_vtpm.tpm.pcr08 in query_reference_value("snp_pcr08")
+  input.az_snp_vtpm.tpm.pcr09 in query_reference_value("snp_pcr09")
   input.az_snp_vtpm.tpm.pcr11 in query_reference_value("snp_pcr11")
+  input.az_snp_vtpm.tpm.pcr12 in query_reference_value("snp_pcr12")
 }
 
 hardware := 2 if {
@@ -259,7 +263,11 @@ configuration := 2 if {
 executables := 3 if {
   input.az_tdx_vtpm
 
+  input.az_tdx_vtpm.tpm.pcr03 in query_reference_value("tdx_pcr03")
+  input.az_tdx_vtpm.tpm.pcr08 in query_reference_value("tdx_pcr08")
+  input.az_tdx_vtpm.tpm.pcr09 in query_reference_value("tdx_pcr09")
   input.az_tdx_vtpm.tpm.pcr11 in query_reference_value("tdx_pcr11")
+  input.az_tdx_vtpm.tpm.pcr12 in query_reference_value("tdx_pcr12")
 }
 
 hardware := 2 if {
