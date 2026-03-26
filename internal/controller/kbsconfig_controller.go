@@ -608,6 +608,11 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 			},
 		},
 	}
+	// Set KbsConfig instance as the owner and controller
+	err = ctrl.SetControllerReference(r.kbsConfig, deployment, r.Scheme)
+	if err != nil {
+		return nil, err
+	}
 	return deployment, nil
 }
 
@@ -700,6 +705,9 @@ func (r *KbsConfigReconciler) buildKbsContainer(volumeMounts []corev1.VolumeMoun
 		imageName = os.Getenv("KBS_IMAGE_NAME")
 	} else {
 		imageName = os.Getenv("KBS_IMAGE_NAME_MICROSERVICES")
+	}
+	if imageName == "" {
+		imageName = DefaultKbsImageName
 	}
 
 	// command array for the KBS container
@@ -859,8 +867,8 @@ func (r *KbsConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// KbsConfigMap, KbsSecret, KbsAsConfigMap, KbsRvpsConfigMap in the same namespace as the controller
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&confidentialcontainersorgv1alpha1.KbsConfig{}).
-		// Watch for changes to ConfigMap, Secret that are in the same namespace as the controller
-		// The ConfigMap and Secret are not owned by the KbsConfig
+		// Watch externally-referenced ConfigMaps and Secrets (not owned by KbsConfig)
+		// so that changes to user-supplied configuration trigger reconciliation.
 		Watches(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(configMapMapper),
@@ -871,8 +879,13 @@ func (r *KbsConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(secretMapper),
 			builder.WithPredicates(namespacePredicate(r.namespace)),
 		).
+		// Watch ConfigMaps and Secrets owned by KbsConfig so that accidental
+		// deletion triggers reconciliation and the controller recreates them.
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Secret{}).
+		// Watch Deployment and Service to trigger reconciliation when their status changes
+		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.Service{}).
 		Complete(r)
 }
 
@@ -947,6 +960,8 @@ func secretToKbsConfigMapper(c client.Client, log logr.Logger) (handler.MapFunc,
 			secretMatches := kbsConfig.Spec.KbsAuthSecretName == secret.Name ||
 				kbsConfig.Spec.KbsHttpsKeySecretName == secret.Name ||
 				kbsConfig.Spec.KbsHttpsCertSecretName == secret.Name ||
+				kbsConfig.Spec.KbsAttestationKeySecretName == secret.Name ||
+				kbsConfig.Spec.KbsAttestationCertSecretName == secret.Name ||
 				(kbsConfig.Spec.KbsSecretResources != nil && contains(kbsConfig.Spec.KbsSecretResources, secret.Name))
 
 			// Check if secret matches any of the local cert cache secrets
@@ -1023,11 +1038,8 @@ func (r *KbsConfigReconciler) updateKbsConfigStatus(ctx context.Context) error {
 		}
 	}
 
-	// Only write the status subresource when something actually changed
-	if newIsReady == oldIsReady {
-		return nil
-	}
-
+	// Always update status to ensure it's initialized, even on first reconcile.
+	// The Status().Update() call will handle deduplication if nothing changed.
 	r.kbsConfig.Status.IsReady = newIsReady
 	err = r.Status().Update(ctx, r.kbsConfig)
 	if err != nil {
