@@ -181,7 +181,7 @@ spec:
                     fieldRef:
                       fieldPath: metadata.namespace
                 - name: KBS_IMAGE_NAME
-                  value: "registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:9909ef4026efdd7e9caf92cf4664c39673949afccccbcdcc25b2f3d082c2e2ae"
+                  value: "registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:f72e330f0b5b32caa2f1072e6a5a923ae917c83417eb05d3ce42c4356ce8502f"
                 - name: KBS_IMAGE_NAME_MICROSERVICES
                   value: ghcr.io/confidential-containers/key-broker-service:v0.17.0
                 - name: AS_IMAGE_NAME
@@ -277,7 +277,7 @@ spec:
     name: Red Hat
     url: https://github.com/confidential-containers
   relatedImages:
-  - image: registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:9909ef4026efdd7e9caf92cf4664c39673949afccccbcdcc25b2f3d082c2e2ae
+  - image: registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:f72e330f0b5b32caa2f1072e6a5a923ae917c83417eb05d3ce42c4356ce8502f
     name: trustee
   replaces: trustee-operator.v1.0.0
   version: 1.1.0
