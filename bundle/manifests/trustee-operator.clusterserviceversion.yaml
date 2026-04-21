@@ -5,7 +5,7 @@ metadata:
     alm-examples: '[]'
     capabilities: Basic Install
     categories: "Security"
-    containerImage: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:08827d133590f3d77cb13a3648535a96a41658730c54f9729df2c3db313e0424"
+    containerImage: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:462b0b819367da68bf6e4ba11b1ed8c1a6ecbf0625db0a739b581c3e1868c2f6"
     createdAt: "2024-06-07T10:06:06Z"
     operatorframework.io/suggested-namespace: trustee-operator-system
     operators.operatorframework.io/builder: operator-sdk-v1.42.0
@@ -188,7 +188,7 @@ spec:
                   value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
                 - name: RVPS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/rvps:latest
-                image: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:08827d133590f3d77cb13a3648535a96a41658730c54f9729df2c3db313e0424"
+                image: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:462b0b819367da68bf6e4ba11b1ed8c1a6ecbf0625db0a739b581c3e1868c2f6"
                 livenessProbe:
                   httpGet:
                     path: /healthz
