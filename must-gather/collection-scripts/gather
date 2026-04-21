@@ -21,6 +21,9 @@ done
 # Collect CRDs
 /usr/bin/gather_crds
 
+# Collect OLM installation resources
+/usr/bin/gather_olm_resources
+
 # Collect trustee operator logs and resources
 /usr/bin/gather_trustee_operator
 

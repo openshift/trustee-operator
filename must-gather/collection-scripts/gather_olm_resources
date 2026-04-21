@@ -1,0 +1,41 @@
+#!/bin/bash
+
+BASE_COLLECTION_PATH="/must-gather"
+OLM_COLLECTION_PATH="${BASE_COLLECTION_PATH}/cluster-scoped-resources/olm"
+
+mkdir -p "${OLM_COLLECTION_PATH}"
+
+echo "Collecting OLM resources for trustee operator..."
+
+# Collect ClusterServiceVersion (CSV) for trustee operator
+echo "  Collecting ClusterServiceVersion..."
+/usr/bin/oc get csv -A -o yaml | grep -A 10000 "trustee" > "${OLM_COLLECTION_PATH}/clusterserviceversions.yaml" 2>/dev/null
+
+# Collect all CSVs in trustee-operator-system namespace
+/usr/bin/oc get csv -n trustee-operator-system -o yaml > "${OLM_COLLECTION_PATH}/csv-trustee-operator-system.yaml" 2>/dev/null
+
+# Collect Subscription for trustee operator
+echo "  Collecting Subscriptions..."
+/usr/bin/oc get subscription -A -o yaml | grep -A 1000 "trustee" > "${OLM_COLLECTION_PATH}/subscriptions.yaml" 2>/dev/null
+/usr/bin/oc get subscription -n trustee-operator-system -o yaml > "${OLM_COLLECTION_PATH}/subscription-trustee-operator-system.yaml" 2>/dev/null
+
+# Collect OperatorGroup
+echo "  Collecting OperatorGroups..."
+/usr/bin/oc get operatorgroup -n trustee-operator-system -o yaml > "${OLM_COLLECTION_PATH}/operatorgroups.yaml" 2>/dev/null
+
+# Collect InstallPlan
+echo "  Collecting InstallPlans..."
+/usr/bin/oc get installplan -n trustee-operator-system -o yaml > "${OLM_COLLECTION_PATH}/installplans.yaml" 2>/dev/null
+
+# Collect CatalogSource (may be in openshift-marketplace)
+echo "  Collecting CatalogSources..."
+/usr/bin/oc get catalogsource -n openshift-marketplace -o yaml > "${OLM_COLLECTION_PATH}/catalogsources.yaml" 2>/dev/null
+
+# Collect PackageManifest for trustee
+echo "  Collecting PackageManifests..."
+/usr/bin/oc get packagemanifest -A | grep -i trustee > "${OLM_COLLECTION_PATH}/packagemanifests.txt" 2>/dev/null
+/usr/bin/oc get packagemanifest trustee-operator -o yaml > "${OLM_COLLECTION_PATH}/packagemanifest-trustee-operator.yaml" 2>/dev/null
+
+echo "OLM resources collection complete."
+
+exit 0

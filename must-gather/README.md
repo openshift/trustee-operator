@@ -11,6 +11,13 @@ The must-gather image collects the following information:
   - `kbsconfigs.confidentialcontainers.org`
   - `trusteeconfigs.confidentialcontainers.org`
 - **Custom Resources**: All KbsConfig and TrusteeConfig instances
+- **OLM Installation Resources**:
+  - ClusterServiceVersion (CSV)
+  - Subscription
+  - OperatorGroup
+  - InstallPlan
+  - CatalogSource
+  - PackageManifest
 - **Kubernetes Resources**:
   - Deployments
   - Pods (descriptions and status)
@@ -50,7 +57,10 @@ must-gather/
 ├── collection-scripts/
 │   ├── gather                    # Main collection orchestrator
 │   ├── gather_crds               # Collects CRD definitions
+│   ├── gather_olm_resources      # Collects OLM installation resources
 │   └── gather_trustee_operator   # Collects trustee-specific resources and logs
+├── LICENSE                       # Apache 2.0 license
+├── Makefile                      # Build targets for podman/docker
 └── README.md                     # This file
 ```
 
