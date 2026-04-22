@@ -27,6 +27,9 @@ done
 # Collect RBAC resources
 /usr/bin/gather_rbac
 
+# Collect network resources
+/usr/bin/gather_network
+
 # Collect trustee operator logs and resources
 /usr/bin/gather_trustee_operator
 
