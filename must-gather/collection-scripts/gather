@@ -30,6 +30,9 @@ done
 # Collect network resources
 /usr/bin/gather_network
 
+# Collect storage resources
+/usr/bin/gather_storage
+
 # Collect trustee operator logs and resources
 /usr/bin/gather_trustee_operator
 

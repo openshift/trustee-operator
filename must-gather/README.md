@@ -32,6 +32,12 @@ The must-gather image collects the following information:
   - Cluster network configuration
   - DNS configuration
   - IngressController configuration
+- **Storage Resources**:
+  - PersistentVolumeClaims (in trustee-operator-system namespace)
+  - PersistentVolumes (cluster-scoped, filtered for trustee-operator-system)
+  - StorageClasses
+  - VolumeAttachments
+  - PVC descriptions
 - **Kubernetes Resources**:
   - Deployments
   - Pods (descriptions and status)
@@ -74,6 +80,7 @@ must-gather/
 │   ├── gather_olm_resources      # Collects OLM installation resources
 │   ├── gather_rbac               # Collects RBAC resources
 │   ├── gather_network            # Collects network resources
+│   ├── gather_storage            # Collects storage resources
 │   └── gather_trustee_operator   # Collects trustee-specific resources and logs
 ├── LICENSE                       # Apache 2.0 license
 ├── Makefile                      # Build targets for podman/docker
