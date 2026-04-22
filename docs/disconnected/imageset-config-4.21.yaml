@@ -1,0 +1,18 @@
+kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v1alpha2
+storageConfig:
+  registry:
+    # URL of your internal registry where oc-mirror will store its metadata
+    # and push the mirrored images.
+    imageURL: <your-registry>/mirror/oc-mirror-metadata
+    skipTLS: false
+mirror:
+  operators:
+  - # Red Hat's official OLM catalog index for OCP 4.21.
+    # oc-mirror will automatically mirror the catalog index, the operator
+    # bundle, and all images listed as relatedImages in the bundle.
+    catalog: registry.redhat.io/redhat/redhat-operator-index:v4.21
+    packages:
+    - name: trustee-operator
+      channels:
+      - name: stable
