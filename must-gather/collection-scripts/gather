@@ -24,6 +24,9 @@ done
 # Collect OLM installation resources
 /usr/bin/gather_olm_resources
 
+# Collect RBAC resources
+/usr/bin/gather_rbac
+
 # Collect trustee operator logs and resources
 /usr/bin/gather_trustee_operator
 
