@@ -1,0 +1,51 @@
+#!/bin/bash
+
+BASE_COLLECTION_PATH="/must-gather"
+NETWORK_COLLECTION_PATH="${BASE_COLLECTION_PATH}/cluster-scoped-resources/network"
+NAMESPACE="trustee-operator-system"
+
+mkdir -p "${NETWORK_COLLECTION_PATH}"
+mkdir -p "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network"
+
+echo "Collecting network resources for trustee operator..."
+
+# Collect NetworkPolicies
+echo "  Collecting NetworkPolicies in ${NAMESPACE}..."
+/usr/bin/oc get networkpolicy -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/networkpolicies.yaml" 2>/dev/null
+
+# List all NetworkPolicies
+/usr/bin/oc get networkpolicy -n "${NAMESPACE}" > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/networkpolicies-list.txt" 2>/dev/null
+
+# Collect Routes (OpenShift specific)
+echo "  Collecting Routes in ${NAMESPACE}..."
+/usr/bin/oc get route -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/routes.yaml" 2>/dev/null
+/usr/bin/oc get route -n "${NAMESPACE}" -o wide > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/routes-wide.txt" 2>/dev/null
+
+# Collect Ingresses
+echo "  Collecting Ingresses in ${NAMESPACE}..."
+/usr/bin/oc get ingress -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/ingresses.yaml" 2>/dev/null
+/usr/bin/oc get ingress -n "${NAMESPACE}" -o wide > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/ingresses-wide.txt" 2>/dev/null
+
+# Collect Endpoints
+echo "  Collecting Endpoints in ${NAMESPACE}..."
+/usr/bin/oc get endpoints -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/endpoints.yaml" 2>/dev/null
+
+# Collect EndpointSlices (if available)
+echo "  Collecting EndpointSlices in ${NAMESPACE}..."
+/usr/bin/oc get endpointslices -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/network/endpointslices.yaml" 2>/dev/null
+
+# Collect cluster-wide network configuration
+echo "  Collecting cluster network configuration..."
+/usr/bin/oc get network.config.openshift.io cluster -o yaml > "${NETWORK_COLLECTION_PATH}/cluster-network.yaml" 2>/dev/null
+
+# Collect DNS configuration
+echo "  Collecting DNS configuration..."
+/usr/bin/oc get dns.operator.openshift.io default -o yaml > "${NETWORK_COLLECTION_PATH}/dns-operator.yaml" 2>/dev/null
+
+# Collect IngressController configuration
+echo "  Collecting IngressController configuration..."
+/usr/bin/oc get ingresscontroller -n openshift-ingress-operator -o yaml > "${NETWORK_COLLECTION_PATH}/ingresscontrollers.yaml" 2>/dev/null
+
+echo "Network resources collection complete."
+
+exit 0

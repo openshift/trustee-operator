@@ -1,0 +1,76 @@
+#!/bin/bash
+
+NAMESPACE="trustee-operator-system"
+BASE_COLLECTION_PATH="/must-gather"
+TRUSTEE_COLLECTION_PATH="${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}"
+
+mkdir -p "${TRUSTEE_COLLECTION_PATH}"
+
+echo "Collecting trustee operator resources from namespace ${NAMESPACE}..."
+
+# Collect all KbsConfig custom resources
+echo "  Collecting KbsConfig resources..."
+/usr/bin/oc get kbsconfigs -n "${NAMESPACE}" -o yaml > "${TRUSTEE_COLLECTION_PATH}/kbsconfigs.yaml" 2>/dev/null
+
+# Collect all TrusteeConfig custom resources
+echo "  Collecting TrusteeConfig resources..."
+/usr/bin/oc get trusteeconfigs -n "${NAMESPACE}" -o yaml > "${TRUSTEE_COLLECTION_PATH}/trusteeconfigs.yaml" 2>/dev/null
+
+# Collect all pods in the namespace
+echo "  Collecting pod information..."
+/usr/bin/oc get pods -n "${NAMESPACE}" -o yaml > "${TRUSTEE_COLLECTION_PATH}/pods.yaml" 2>/dev/null
+/usr/bin/oc get pods -n "${NAMESPACE}" -o wide > "${TRUSTEE_COLLECTION_PATH}/pods-wide.txt" 2>/dev/null
+
+# Collect deployments
+echo "  Collecting deployment information..."
+/usr/bin/oc get deployments -n "${NAMESPACE}" -o yaml > "${TRUSTEE_COLLECTION_PATH}/deployments.yaml" 2>/dev/null
+
+# Collect services
+echo "  Collecting service information..."
+/usr/bin/oc get services -n "${NAMESPACE}" -o yaml > "${TRUSTEE_COLLECTION_PATH}/services.yaml" 2>/dev/null
+
+# Collect configmaps
+echo "  Collecting configmaps..."
+/usr/bin/oc get configmaps -n "${NAMESPACE}" -o yaml > "${TRUSTEE_COLLECTION_PATH}/configmaps.yaml" 2>/dev/null
+
+# Collect secrets metadata (not the actual secret data for security)
+echo "  Collecting secrets metadata..."
+/usr/bin/oc get secrets -n "${NAMESPACE}" -o yaml | grep -v "data:" > "${TRUSTEE_COLLECTION_PATH}/secrets-metadata.yaml" 2>/dev/null
+
+# Collect pod logs for all pods in the namespace
+echo "  Collecting pod logs..."
+PODS_LOGS_PATH="${TRUSTEE_COLLECTION_PATH}/logs"
+mkdir -p "${PODS_LOGS_PATH}"
+
+for pod in $(/usr/bin/oc get pods -n "${NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+    echo "    Collecting logs for pod: ${pod}"
+
+    # Get all containers in the pod
+    containers=$(/usr/bin/oc get pod "${pod}" -n "${NAMESPACE}" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null)
+
+    for container in ${containers}; do
+        echo "      Container: ${container}"
+        # Current logs
+        /usr/bin/oc logs "${pod}" -n "${NAMESPACE}" -c "${container}" > "${PODS_LOGS_PATH}/${pod}_${container}.log" 2>/dev/null
+
+        # Previous logs (if container has restarted)
+        /usr/bin/oc logs "${pod}" -n "${NAMESPACE}" -c "${container}" --previous > "${PODS_LOGS_PATH}/${pod}_${container}_previous.log" 2>/dev/null
+    done
+done
+
+# Collect events
+echo "  Collecting events..."
+/usr/bin/oc get events -n "${NAMESPACE}" --sort-by='.lastTimestamp' > "${TRUSTEE_COLLECTION_PATH}/events.txt" 2>/dev/null
+
+# Collect describe output for pods
+echo "  Collecting pod descriptions..."
+PODS_DESCRIBE_PATH="${TRUSTEE_COLLECTION_PATH}/describe"
+mkdir -p "${PODS_DESCRIBE_PATH}"
+
+for pod in $(/usr/bin/oc get pods -n "${NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+    /usr/bin/oc describe pod "${pod}" -n "${NAMESPACE}" > "${PODS_DESCRIBE_PATH}/${pod}.txt" 2>/dev/null
+done
+
+echo "Trustee operator resource collection complete."
+
+exit 0

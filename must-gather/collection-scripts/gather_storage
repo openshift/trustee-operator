@@ -1,0 +1,48 @@
+#!/bin/bash
+
+BASE_COLLECTION_PATH="/must-gather"
+STORAGE_COLLECTION_PATH="${BASE_COLLECTION_PATH}/cluster-scoped-resources/storage"
+NAMESPACE="trustee-operator-system"
+
+mkdir -p "${STORAGE_COLLECTION_PATH}"
+mkdir -p "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/storage"
+
+echo "Collecting storage resources for trustee operator..."
+
+# Collect PersistentVolumeClaims
+echo "  Collecting PersistentVolumeClaims in ${NAMESPACE}..."
+/usr/bin/oc get pvc -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/storage/persistentvolumeclaims.yaml" 2>/dev/null
+/usr/bin/oc get pvc -n "${NAMESPACE}" -o wide > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/storage/persistentvolumeclaims-wide.txt" 2>/dev/null
+
+# Collect PersistentVolumes that are bound to trustee-operator-system
+echo "  Collecting PersistentVolumes..."
+/usr/bin/oc get pv -o yaml > "${STORAGE_COLLECTION_PATH}/persistentvolumes-all.yaml" 2>/dev/null
+
+# Extract PVs specifically bound to trustee-operator-system
+/usr/bin/oc get pv -o json | \
+    jq '.items[] | select(.spec.claimRef.namespace=="trustee-operator-system")' 2>/dev/null > "${STORAGE_COLLECTION_PATH}/persistentvolumes-trustee.json" 2>/dev/null
+
+# List PVs bound to trustee namespace
+/usr/bin/oc get pv --field-selector metadata.namespace=trustee-operator-system -o wide > "${STORAGE_COLLECTION_PATH}/persistentvolumes-trustee.txt" 2>/dev/null
+
+# Collect StorageClasses (useful for understanding PV provisioning)
+echo "  Collecting StorageClasses..."
+/usr/bin/oc get storageclass -o yaml > "${STORAGE_COLLECTION_PATH}/storageclasses.yaml" 2>/dev/null
+/usr/bin/oc get storageclass > "${STORAGE_COLLECTION_PATH}/storageclasses-list.txt" 2>/dev/null
+
+# Collect VolumeAttachments (useful for troubleshooting mount issues)
+echo "  Collecting VolumeAttachments..."
+/usr/bin/oc get volumeattachment -o yaml > "${STORAGE_COLLECTION_PATH}/volumeattachments.yaml" 2>/dev/null
+
+# Describe PVCs for additional details
+echo "  Collecting PVC descriptions..."
+PVCS_DESCRIBE_PATH="${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/storage/describe"
+mkdir -p "${PVCS_DESCRIBE_PATH}"
+
+for pvc in $(/usr/bin/oc get pvc -n "${NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+    /usr/bin/oc describe pvc "${pvc}" -n "${NAMESPACE}" > "${PVCS_DESCRIBE_PATH}/${pvc}.txt" 2>/dev/null
+done
+
+echo "Storage resources collection complete."
+
+exit 0

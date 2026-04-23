@@ -1,0 +1,50 @@
+#!/bin/bash
+
+BASE_COLLECTION_PATH="/must-gather"
+RBAC_COLLECTION_PATH="${BASE_COLLECTION_PATH}/cluster-scoped-resources/rbac"
+NAMESPACE="trustee-operator-system"
+
+mkdir -p "${RBAC_COLLECTION_PATH}"
+mkdir -p "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/rbac"
+
+echo "Collecting RBAC resources for trustee operator..."
+
+# Collect cluster-scoped RBAC resources
+echo "  Collecting ClusterRoles..."
+/usr/bin/oc get clusterrole -o yaml | grep -B 5 -A 10000 "trustee" > "${RBAC_COLLECTION_PATH}/clusterroles-trustee.yaml" 2>/dev/null
+
+# Get specific trustee ClusterRoles
+/usr/bin/oc get clusterrole trustee-operator-manager-role -o yaml > "${RBAC_COLLECTION_PATH}/clusterrole-manager.yaml" 2>/dev/null
+/usr/bin/oc get clusterrole trustee-operator-metrics-reader -o yaml > "${RBAC_COLLECTION_PATH}/clusterrole-metrics-reader.yaml" 2>/dev/null
+/usr/bin/oc get clusterrole trustee-operator-proxy-role -o yaml > "${RBAC_COLLECTION_PATH}/clusterrole-proxy.yaml" 2>/dev/null
+
+echo "  Collecting ClusterRoleBindings..."
+/usr/bin/oc get clusterrolebinding -o yaml | grep -B 5 -A 10000 "trustee" > "${RBAC_COLLECTION_PATH}/clusterrolebindings-trustee.yaml" 2>/dev/null
+
+# Get specific trustee ClusterRoleBindings
+/usr/bin/oc get clusterrolebinding trustee-operator-manager-rolebinding -o yaml > "${RBAC_COLLECTION_PATH}/clusterrolebinding-manager.yaml" 2>/dev/null
+/usr/bin/oc get clusterrolebinding trustee-operator-proxy-rolebinding -o yaml > "${RBAC_COLLECTION_PATH}/clusterrolebinding-proxy.yaml" 2>/dev/null
+
+# Collect namespace-scoped RBAC resources
+echo "  Collecting ServiceAccounts in ${NAMESPACE}..."
+/usr/bin/oc get serviceaccount -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/rbac/serviceaccounts.yaml" 2>/dev/null
+
+echo "  Collecting Roles in ${NAMESPACE}..."
+/usr/bin/oc get role -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/rbac/roles.yaml" 2>/dev/null
+
+echo "  Collecting RoleBindings in ${NAMESPACE}..."
+/usr/bin/oc get rolebinding -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/rbac/rolebindings.yaml" 2>/dev/null
+
+# Collect ServiceAccount token secrets (metadata only)
+echo "  Collecting ServiceAccount secrets metadata..."
+for sa in $(/usr/bin/oc get serviceaccount -n "${NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+    /usr/bin/oc get serviceaccount "${sa}" -n "${NAMESPACE}" -o yaml | grep -v "token:" > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/rbac/serviceaccount-${sa}.yaml" 2>/dev/null
+done
+
+# List permissions (useful for debugging)
+echo "  Collecting permission checks..."
+/usr/bin/oc auth can-i --list --as=system:serviceaccount:${NAMESPACE}:trustee-operator-controller-manager > "${RBAC_COLLECTION_PATH}/permissions-controller-manager.txt" 2>/dev/null
+
+echo "RBAC resources collection complete."
+
+exit 0
