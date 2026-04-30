@@ -33,9 +33,9 @@ echo "  Collecting service information..."
 echo "  Collecting configmaps..."
 /usr/bin/oc get configmaps -n "${NAMESPACE}" -o yaml > "${TRUSTEE_COLLECTION_PATH}/configmaps.yaml" 2>/dev/null
 
-# Collect secrets metadata (not the actual secret data for security)
-echo "  Collecting secrets metadata..."
-/usr/bin/oc get secrets -n "${NAMESPACE}" -o yaml | grep -v "data:" > "${TRUSTEE_COLLECTION_PATH}/secrets-metadata.yaml" 2>/dev/null
+# List secrets (exclude actual secret data for security)
+echo "  Collecting secrets list..."
+/usr/bin/oc get secrets -n "${NAMESPACE}" -o custom-columns=NAME:.metadata.name,TYPE:.type,AGE:.metadata.creationTimestamp > "${TRUSTEE_COLLECTION_PATH}/secrets-list.txt" 2>/dev/null
 
 # Collect pod logs for all pods in the namespace
 echo "  Collecting pod logs..."

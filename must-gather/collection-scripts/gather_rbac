@@ -35,11 +35,8 @@ echo "  Collecting Roles in ${NAMESPACE}..."
 echo "  Collecting RoleBindings in ${NAMESPACE}..."
 /usr/bin/oc get rolebinding -n "${NAMESPACE}" -o yaml > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/rbac/rolebindings.yaml" 2>/dev/null
 
-# Collect ServiceAccount token secrets (metadata only)
-echo "  Collecting ServiceAccount secrets metadata..."
-for sa in $(/usr/bin/oc get serviceaccount -n "${NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-    /usr/bin/oc get serviceaccount "${sa}" -n "${NAMESPACE}" -o yaml | grep -v "token:" > "${BASE_COLLECTION_PATH}/namespaces/${NAMESPACE}/rbac/serviceaccount-${sa}.yaml" 2>/dev/null
-done
+# ServiceAccounts already collected above (line 30)
+# Individual ServiceAccount details are safe to collect as they only contain references to secrets, not the actual secret data
 
 # List permissions (useful for debugging)
 echo "  Collecting permission checks..."
