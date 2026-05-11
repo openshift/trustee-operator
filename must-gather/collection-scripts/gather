@@ -33,6 +33,9 @@ done
 # Collect storage resources
 /usr/bin/gather_storage
 
+# Collect audit logs
+/usr/bin/gather_audit_logs
+
 # Collect trustee operator logs and resources
 /usr/bin/gather_trustee_operator
 

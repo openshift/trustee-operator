@@ -1,0 +1,20 @@
+#!/bin/bash
+
+BASE_COLLECTION_PATH="${BASE_COLLECTION_PATH:-/must-gather}"
+AUDIT_LOG_PATH="/var/log/audit"
+
+mkdir -p "${BASE_COLLECTION_PATH}/audit-logs"
+
+# Discover and download audit logs from all worker nodes
+echo "Collecting audit logs from worker nodes..."
+
+/usr/bin/oc adm node-logs --role=worker --path="${AUDIT_LOG_PATH}" 2>/dev/null | \
+    grep -v "Listing .* on" | \
+    grep -v "terminating" | \
+    grep -v ".lock" | \
+    awk '{print ENVIRON["AUDIT_LOG_PATH"], ENVIRON["BASE_COLLECTION_PATH"] "/audit-logs", $1, $2}' | \
+    xargs --max-procs=45 -n 4 sh -c '/usr/bin/oc adm node-logs $3 --path=$1/$4 2>/dev/null | gzip > $2/$3-$4.gz' sh
+
+sync
+
+echo "Audit log collection complete"
