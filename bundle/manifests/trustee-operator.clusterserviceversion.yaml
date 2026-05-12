@@ -23,7 +23,7 @@ metadata:
     features.operators.openshift.io/token-auth-gcp: "false"
     operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift Platform Plus"]'
     repository: https://github.com/openshift/trustee-operator
-  name: trustee-operator.v1.1.0
+  name: trustee-operator.v1.1.1
   namespace: placeholder
   labels:
     operatorframework.io/os.linux: supported
@@ -279,5 +279,5 @@ spec:
   relatedImages:
   - image: registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:7c132a71a7a374f594e36e5c9f255e6e0cca7ad456b81ddc9f93b0d5c39dec06
     name: trustee
-  replaces: trustee-operator.v1.0.0
-  version: 1.1.0
+  replaces: trustee-operator.v1.1.0
+  version: 1.1.1
