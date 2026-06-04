@@ -180,10 +180,12 @@ spec:
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
+                - name: OPERATOR_IMAGE_NAME
+                  value: quay.io/confidential-containers/trustee-operator:v0.19.0
                 - name: KBS_IMAGE_NAME
                   value: "registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:7c132a71a7a374f594e36e5c9f255e6e0cca7ad456b81ddc9f93b0d5c39dec06"
                 - name: KBS_IMAGE_NAME_MICROSERVICES
-                  value: ghcr.io/confidential-containers/key-broker-service:v0.17.0
+                  value: ghcr.io/confidential-containers/key-broker-service:v0.19.0
                 - name: AS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
                 - name: RVPS_IMAGE_NAME
@@ -205,10 +207,10 @@ spec:
                 resources:
                   limits:
                     cpu: 500m
-                    memory: 128Mi
+                    memory: 512Mi
                   requests:
                     cpu: 10m
-                    memory: 64Mi
+                    memory: 256Mi
                 securityContext:
                   allowPrivilegeEscalation: false
                   capabilities:

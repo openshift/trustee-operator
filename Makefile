@@ -48,6 +48,7 @@ endif
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.32.0
 
@@ -175,8 +176,8 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 # Run sample attestation in a kind cluster
 # pre-requirements: kuttl plugin and kind are installed
 # Usage: KBS_IMAGE_NAME=<trustee-image> CLIENT_IMAGE_NAME=<client-image> make test-e2e
-KBS_IMAGE_NAME ?= ghcr.io/confidential-containers/key-broker-service:built-in-as-v0.17.0
-CLIENT_IMAGE_NAME ?= quay.io/confidential-containers/kbs-client:v0.17.0
+KBS_IMAGE_NAME ?= ghcr.io/confidential-containers/key-broker-service:built-in-as-v0.19.0-trustee-operator
+CLIENT_IMAGE_NAME ?= quay.io/confidential-containers/kbs-client:v0.19.0
 .PHONY: test-e2e
 test-e2e:
 	./tests/scripts/kind-with-registry.sh
