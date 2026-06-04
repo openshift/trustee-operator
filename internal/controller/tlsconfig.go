@@ -17,7 +17,12 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
 	"strings"
+
+	configv1 "github.com/openshift/api/config/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	confidentialcontainersorgv1alpha1 "github.com/confidential-containers/trustee-operator/api/v1alpha1"
 )
@@ -148,4 +153,80 @@ func convertSingleCipher(cipher string) string {
 	}
 
 	return strings.Join(converted, "-")
+}
+
+// GetTLSConfigFromCluster retrieves TLS configuration from the OpenShift APIServer resource
+// Falls back to the provided TlsConfig if the APIServer resource cannot be read
+func GetTLSConfigFromCluster(ctx context.Context, c client.Client, fallbackConfig *confidentialcontainersorgv1alpha1.TlsConfig) *KbsConfigTemplateData {
+	// Try to get the cluster-wide APIServer configuration
+	apiServer := &configv1.APIServer{}
+	err := c.Get(ctx, client.ObjectKey{Name: "cluster"}, apiServer)
+	if err != nil {
+		// If we can't get the APIServer config (e.g., not on OpenShift or doesn't exist),
+		// fall back to the provided TlsConfig
+		if k8serrors.IsNotFound(err) {
+			return GetTLSConfigFromTlsConfig(fallbackConfig)
+		}
+		// For other errors, also fall back
+		return GetTLSConfigFromTlsConfig(fallbackConfig)
+	}
+
+	// Get the TLS security profile from the APIServer spec
+	tlsProfile := apiServer.Spec.TLSSecurityProfile
+	if tlsProfile == nil {
+		// No TLS profile set, use fallback
+		return GetTLSConfigFromTlsConfig(fallbackConfig)
+	}
+
+	// Convert OpenShift TLSSecurityProfile to KbsConfigTemplateData
+	return convertOpenShiftTLSProfile(tlsProfile)
+}
+
+// convertOpenShiftTLSProfile converts OpenShift TLSSecurityProfile to KbsConfigTemplateData
+func convertOpenShiftTLSProfile(profile *configv1.TLSSecurityProfile) *KbsConfigTemplateData {
+	data := &KbsConfigTemplateData{}
+
+	switch profile.Type {
+	case configv1.TLSProfileOldType:
+		data.TlsProfile = "old"
+	case configv1.TLSProfileIntermediateType:
+		data.TlsProfile = "intermediate"
+	case configv1.TLSProfileModernType:
+		data.TlsProfile = "modern"
+	case configv1.TLSProfileCustomType:
+		data.TlsProfile = "custom"
+		if profile.Custom != nil {
+			data.TlsMinVersion = convertTLSVersion(profile.Custom.MinTLSVersion)
+			// OpenShift TLSProfileSpec doesn't have MaxTLSVersion, only MinTLSVersion
+
+			if len(profile.Custom.Ciphers) > 0 {
+				// OpenShift uses OpenSSL format already, join with colons
+				data.TlsCiphers = strings.Join(profile.Custom.Ciphers, ":")
+			}
+
+			// Note: Groups field is not available in all versions of OpenShift API
+			// It was added later with the TLSGroupPreferences feature gate
+		}
+	default:
+		// Unknown profile type, default to intermediate
+		data.TlsProfile = "intermediate"
+	}
+
+	return data
+}
+
+// convertTLSVersion converts OpenShift TLSProtocolVersion to string format
+func convertTLSVersion(version configv1.TLSProtocolVersion) string {
+	switch version {
+	case configv1.VersionTLS10:
+		return "1.0"
+	case configv1.VersionTLS11:
+		return "1.1"
+	case configv1.VersionTLS12:
+		return "1.2"
+	case configv1.VersionTLS13:
+		return "1.3"
+	default:
+		return ""
+	}
 }

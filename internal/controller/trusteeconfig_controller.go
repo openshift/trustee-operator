@@ -59,6 +59,7 @@ type TrusteeConfigReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -535,7 +536,7 @@ func (r *TrusteeConfigReconciler) getHttpsCertSecretName() string {
 }
 
 // generateKbsTomlConfig generates the TOML configuration for KBS
-func (r *TrusteeConfigReconciler) generateKbsTomlConfig() (string, error) {
+func (r *TrusteeConfigReconciler) generateKbsTomlConfig(ctx context.Context) (string, error) {
 	var templateFile string
 
 	// Select template file based on profile type
@@ -559,7 +560,8 @@ func (r *TrusteeConfigReconciler) generateKbsTomlConfig() (string, error) {
 	}
 
 	// Get TLS configuration data for template rendering
-	tlsData := GetTLSConfigFromTlsConfig(r.trusteeConfig.Spec.TlsConfig)
+	// First try to get from OpenShift cluster APIServer, fall back to TrusteeConfig.Spec.TlsConfig
+	tlsData := GetTLSConfigFromCluster(ctx, r.Client, r.trusteeConfig.Spec.TlsConfig)
 
 	// Parse template
 	tmpl, err := template.New("kbs-config").Parse(string(templateContent))
@@ -581,7 +583,7 @@ func (r *TrusteeConfigReconciler) generateKbsTomlConfig() (string, error) {
 
 // generateKbsConfigMap creates a ConfigMap for KBS configuration
 func (r *TrusteeConfigReconciler) generateKbsConfigMap(ctx context.Context) (*corev1.ConfigMap, error) {
-	configToml, err := r.generateKbsTomlConfig()
+	configToml, err := r.generateKbsTomlConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
