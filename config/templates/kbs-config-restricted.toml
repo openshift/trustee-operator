@@ -59,6 +59,9 @@ file_path = "/opt/confidential-containers/rvps/reference-values/reference-values
 type = "Remote"
 verifier_url = "https://nras.attestation.nvidia.com/v4/attest"
 
+[attestation_service.verifier_config.dcap_verifier]
+collateral_service = "https://api.trustedservices.intel.com/sgx/certification/v4/"
+
 [attestation_service.attestation_token_broker.signer]
 key_path = "/etc/attestation-key/token.key"
 cert_path = "/etc/attestation-cert/token.crt"
