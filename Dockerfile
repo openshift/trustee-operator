@@ -19,7 +19,7 @@ RUN go mod download
 
 # Copy the config templates
 COPY config/templates/ config/templates/
-COPY cmd/main.go cmd/main.go
+COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/controller/ internal/controller/
 
@@ -29,6 +29,7 @@ COPY internal/controller/ internal/controller/
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
+RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o secret-converter cmd/secret-converter/main.go
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1773939694
 
@@ -37,6 +38,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1773939694
 
 WORKDIR /
 COPY --from=builder /opt/app-root/src/manager .
+COPY --from=builder /opt/app-root/src/secret-converter .
 
 # Copy the config templates
 COPY --from=builder /opt/app-root/src/config/templates/ /config/templates/
