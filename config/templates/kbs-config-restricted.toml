@@ -4,31 +4,45 @@ insecure_http = false
 private_key = "/etc/https-key/privateKey"
 certificate = "/etc/https-cert/certificate"
 worker_count = 4
+{{if .TlsProfile}}
+# TLS configuration - Mozilla {{.TlsProfile}} profile
+{{if eq .TlsProfile "custom"}}
+tls_profile = "custom"
+{{if .TlsMinVersion}}tls_min_version = "{{.TlsMinVersion}}"{{end}}
+{{if .TlsMaxVersion}}tls_max_version = "{{.TlsMaxVersion}}"{{end}}
+{{if .TlsCiphers}}tls_ciphers = "{{.TlsCiphers}}"{{end}}
+{{if .TlsGroups}}tls_groups = "{{.TlsGroups}}"{{end}}
+{{else}}
+tls_profile = "{{.TlsProfile}}"
+{{end}}
+{{end}}
 
 [admin]
-type = "DenyAll"
-insecure_api = false
-auth_public_key = "/etc/auth-secret/publicKey"
+authorization_mode = "DenyAll"
 
 [attestation_token]
-insecure_key = false
+insecure_header_jwk = false
 attestation_token_type = "CoCo"
 trusted_certs_paths = ["/etc/attestation-cert/token.crt"]
 
 [attestation_service]
 type = "coco_as_builtin"
-work_dir = "/opt/confidential-containers/attestation-service"
-policy_engine = "opa"
-
-[attestation_service.attestation_token_broker]
-type = "Ear"
-policy_dir = "/opt/confidential-containers/attestation-service/policies"
 
 [attestation_service.attestation_token_config]
 duration_min = 5
 
 [attestation_service.rvps_config]
 type = "BuiltIn"
+storage_type = "LocalJson"
+
+[storage_backend]
+storage_type = "LocalFs"
+
+[storage_backend.backends.local_fs]
+dir_path = "/opt/confidential-containers/storage"
+
+[storage_backend.backends.local_json]
+dir_path = "/opt/confidential-containers/storage/local_json"
 
 [attestation_service.verifier_config.snp_verifier]
 # Configure VCEK sources to try, in order. Defaults to [KDS].
@@ -45,14 +59,13 @@ file_path = "/opt/confidential-containers/rvps/reference-values/reference-values
 type = "Remote"
 verifier_url = "https://nras.attestation.nvidia.com/v4/attest"
 
+[attestation_service.verifier_config.dcap_verifier]
+collateral_service = "https://api.trustedservices.intel.com/sgx/certification/v4/"
+
 [attestation_service.attestation_token_broker.signer]
 key_path = "/etc/attestation-key/token.key"
 cert_path = "/etc/attestation-cert/token.crt"
 
 [[plugins]]
 name = "resource"
-type = "LocalFs"
-dir_path = "/opt/confidential-containers/kbs/repository"
-
-[policy_engine]
-policy_path = "/opt/confidential-containers/opa/policy.rego"
+storage_backend_type = "kvstorage"

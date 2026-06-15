@@ -17,11 +17,13 @@ limitations under the License.
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
 	"os"
+	"text/template"
 
 	"github.com/go-logr/logr"
 	routev1 "github.com/openshift/api/route/v1"
@@ -57,6 +59,7 @@ type TrusteeConfigReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=config.openshift.io,resources=apiservers,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -443,11 +446,6 @@ func (r *TrusteeConfigReconciler) configurePermissiveProfile(ctx context.Context
 	}
 	spec.KbsRvpsRefValuesConfigMapName = r.getRvpsReferenceValuesConfigMapName()
 
-	if err := r.createOrUpdateTdxConfigMap(ctx); err != nil {
-		return spec, fmt.Errorf("TDX ConfigMap: %w", err)
-	}
-	spec.TdxConfigSpec.KbsTdxConfigMapName = r.getTdxConfigMapName()
-
 	if err := r.createOrUpdateAttestationPolicyConfigMap(ctx); err != nil {
 		return spec, fmt.Errorf("CPU attestation policy ConfigMap: %w", err)
 	}
@@ -490,11 +488,6 @@ func (r *TrusteeConfigReconciler) configureRestrictedProfile(ctx context.Context
 		return spec, fmt.Errorf("RVPS reference values ConfigMap: %w", err)
 	}
 	spec.KbsRvpsRefValuesConfigMapName = r.getRvpsReferenceValuesConfigMapName()
-
-	if err := r.createOrUpdateTdxConfigMap(ctx); err != nil {
-		return spec, fmt.Errorf("TDX ConfigMap: %w", err)
-	}
-	spec.TdxConfigSpec.KbsTdxConfigMapName = r.getTdxConfigMapName()
 
 	if err := r.createOrUpdateAttestationPolicyConfigMap(ctx); err != nil {
 		return spec, fmt.Errorf("CPU attestation policy ConfigMap: %w", err)
@@ -543,7 +536,7 @@ func (r *TrusteeConfigReconciler) getHttpsCertSecretName() string {
 }
 
 // generateKbsTomlConfig generates the TOML configuration for KBS
-func (r *TrusteeConfigReconciler) generateKbsTomlConfig() (string, error) {
+func (r *TrusteeConfigReconciler) generateKbsTomlConfig(ctx context.Context) (string, error) {
 	var templateFile string
 
 	// Select template file based on profile type
@@ -560,18 +553,37 @@ func (r *TrusteeConfigReconciler) generateKbsTomlConfig() (string, error) {
 	}
 
 	// Read the template file
-	configBytes, err := os.ReadFile(templateFile)
+	templateContent, err := os.ReadFile(templateFile)
 	if err != nil {
 		r.log.Error(err, "Failed to read config template", "template", templateFile)
 		return "", err
 	}
 
-	return string(configBytes), nil
+	// Get TLS configuration data for template rendering
+	// First try to get from OpenShift cluster APIServer, fall back to TrusteeConfig.Spec.TlsConfig
+	tlsData := GetTLSConfigFromCluster(ctx, r.Client, r.trusteeConfig.Spec.TlsConfig)
+
+	// Parse template
+	tmpl, err := template.New("kbs-config").Parse(string(templateContent))
+	if err != nil {
+		r.log.Error(err, "Failed to parse template")
+		return "", fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	// Execute template with TLS data
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, tlsData); err != nil {
+		r.log.Error(err, "Failed to execute template")
+		return "", fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	r.log.Info("Rendered KBS configuration", "tlsProfile", tlsData.TlsProfile)
+	return buf.String(), nil
 }
 
 // generateKbsConfigMap creates a ConfigMap for KBS configuration
 func (r *TrusteeConfigReconciler) generateKbsConfigMap(ctx context.Context) (*corev1.ConfigMap, error) {
-	configToml, err := r.generateKbsTomlConfig()
+	configToml, err := r.generateKbsTomlConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -616,8 +628,25 @@ func (r *TrusteeConfigReconciler) createOrUpdateKbsConfigMap(ctx context.Context
 		return err
 	}
 
-	// ConfigMap already exists, preserve its content
-	r.log.Info("KBS config map already exists, preserving existing content", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
+	// ConfigMap exists - generate new config with current TLS settings
+	newConfigMap, err := r.generateKbsConfigMap(ctx)
+	if err != nil {
+		return err
+	}
+
+	newConfig := newConfigMap.Data["kbs-config.toml"]
+	existingConfig := found.Data["kbs-config.toml"]
+
+	// Merge TLS settings from new config into existing config
+	mergedConfig := mergeTlsSettings(existingConfig, newConfig)
+
+	if mergedConfig != existingConfig {
+		r.log.Info("Updating KBS config map with new TLS settings", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
+		found.Data["kbs-config.toml"] = mergedConfig
+		return r.Update(ctx, found)
+	}
+
+	r.log.V(1).Info("KBS config map TLS settings unchanged", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
 	return nil
 }
 
@@ -675,8 +704,7 @@ func (r *TrusteeConfigReconciler) generateKbsSampleSecret(ctx context.Context) (
 
 	// Prepare secret data
 	data := make(map[string][]byte)
-	data["key1"] = []byte("res1val1")
-	data["key2"] = []byte("res1val2")
+	data["status"] = []byte("success")
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -703,7 +731,7 @@ func (r *TrusteeConfigReconciler) getKbsAuthSecretName() string {
 
 // getKbsSampleSecretName returns the name for the KBS sample secret
 func (r *TrusteeConfigReconciler) getKbsSampleSecretName() string {
-	return "kbsres1"
+	return "attestation-status"
 }
 
 // createOrUpdateKbsAuthSecret creates or updates the KBS auth secret
@@ -1107,7 +1135,7 @@ func (r *TrusteeConfigReconciler) generateResourcePolicyConfigMap(ctx context.Co
 			Namespace: r.namespace,
 		},
 		Data: map[string]string{
-			"policy.rego": policyRego,
+			resourcePolicyFilename: policyRego,
 		},
 	}
 
@@ -1159,7 +1187,7 @@ func (r *TrusteeConfigReconciler) generateRvpsReferenceValuesConfigMap(ctx conte
 			Namespace: r.namespace,
 		},
 		Data: map[string]string{
-			"reference-values.json": referenceValuesJson,
+			"reference_value": referenceValuesJson,
 		},
 	}
 
@@ -1195,58 +1223,6 @@ func (r *TrusteeConfigReconciler) createOrUpdateRvpsReferenceValuesConfigMap(ctx
 
 	// ConfigMap already exists, preserve its content
 	r.log.Info("RVPS reference values config map already exists, preserving existing content", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
-	return nil
-}
-
-// generateTdxConfigMap creates a ConfigMap for TDX configuration
-func (r *TrusteeConfigReconciler) generateTdxConfigMap(ctx context.Context) (*corev1.ConfigMap, error) {
-	tdxConfigJson, err := generateTdxConfigJson()
-	if err != nil {
-		return nil, err
-	}
-
-	configMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.getTdxConfigMapName(),
-			Namespace: r.namespace,
-		},
-		Data: map[string]string{
-			tdxConfigFile: tdxConfigJson,
-		},
-	}
-
-	err = ctrl.SetControllerReference(r.trusteeConfig, configMap, r.Scheme)
-	if err != nil {
-		return nil, err
-	}
-
-	return configMap, nil
-}
-
-// getTdxConfigMapName returns the name for the TDX config map
-func (r *TrusteeConfigReconciler) getTdxConfigMapName() string {
-	return r.trusteeConfig.Name + "-tdx-config"
-}
-
-// createOrUpdateTdxConfigMap creates or updates the TDX ConfigMap
-func (r *TrusteeConfigReconciler) createOrUpdateTdxConfigMap(ctx context.Context) error {
-	configMapName := r.getTdxConfigMapName()
-	found := &corev1.ConfigMap{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: r.namespace, Name: configMapName}, found)
-
-	if err != nil && k8serrors.IsNotFound(err) {
-		r.log.Info("Creating TDX config map", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
-		configMap, err := r.generateTdxConfigMap(ctx)
-		if err != nil {
-			return err
-		}
-		return r.Create(ctx, configMap)
-	} else if err != nil {
-		return err
-	}
-
-	// ConfigMap already exists, preserve its content
-	r.log.Info("TDX config map already exists, preserving existing content", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
 	return nil
 }
 

@@ -62,10 +62,6 @@ type KbsConfigSpec struct {
   // +optional
   KbsResourcePolicyConfigMapName string `json:"kbsResourcePolicyConfigMapName,omitempty"`
 
-  // TdxConfigSpec is the struct that hosts the TDX specific configuration
-  // +optional
-  TdxConfigSpec TdxConfigSpec `json:"tdxConfigSpec,omitempty"`
-
   // IbmSEConfigSpec is the struct that hosts the IBMSE specific configuration
   // +optional
   IbmSEConfigSpec IbmSEConfigSpec `json:"ibmSEConfigSpec,omitempty"`
@@ -82,13 +78,6 @@ type IbmSEConfigSpec struct {
   // certStorePvc is the name of the PeristentVolumeClaim where certificates/keys are mounted
   // +optional
   CertStorePvc string `json:"certStorePvc,omitempty"`
-}
-
-// TdxConfigSpec defines the desired state for TDX configuration
-type TdxConfigSpec struct {
-  // kbsTdxConfigMapName is the name of the configmap containing sgx_default_qcnl.conf file
-  // +optional
-  KbsTdxConfigMapName string `json:"kbsTdxConfigMapName,omitempty"`
 }
 
 // KbsLocalCertCacheSpec defines the configuration for mounting local certificates into trustee file system
@@ -207,14 +196,11 @@ spec:
   kbsHttpsKeySecretName: kbs-https-key
   kbsHttpsCertSecretName: kbs-https-certificate
   # K8s Secrets to be made available to KBS clients
-  kbsSecretResources: ["kbsres1"]
+  kbsSecretResources: ["attestation-status"]
   # Attestation policy
   kbsAttestationPolicyConfigMapName: attestation-policy
   # Resource policy
   kbsResourcePolicyConfigMapName: resource-policy
-  # TDX settings
-  tdxConfigSpec:
-    kbsTdxConfigMapName: tdx-config-sample
   # IBMSE settings
   ibmSEConfigSpec:
     certStorePvc: ibmse-pvc
@@ -316,7 +302,7 @@ data:
         ]
 ```
 
-The default installation creates a sample K8s secret named `kbsres1` to be made available to clients.
+The default installation creates a sample K8s secret named `attestation-status` to be made available to clients.
 Take a look at [patch-kbs-resources.yaml](config/samples/microservices/patch-kbs-resources.yaml) and update it
 with the K8s secrets that you want to deliver to clients via Trustee.
 

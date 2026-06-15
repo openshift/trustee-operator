@@ -48,6 +48,7 @@ endif
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.32.0
 
@@ -103,7 +104,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $(shell go list ./... | grep -v '/cmd$$' | grep -v '/cmd/') -coverprofile cover.out
 
 ##@ Build
 
@@ -175,13 +176,13 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 # Run sample attestation in a kind cluster
 # pre-requirements: kuttl plugin and kind are installed
 # Usage: KBS_IMAGE_NAME=<trustee-image> CLIENT_IMAGE_NAME=<client-image> make test-e2e
-KBS_IMAGE_NAME ?= ghcr.io/confidential-containers/key-broker-service:built-in-as-v0.17.0
-CLIENT_IMAGE_NAME ?= quay.io/confidential-containers/kbs-client:v0.17.0
+KBS_IMAGE_NAME ?= ghcr.io/confidential-containers/staged-images/kbs:b2442c222485b6ec5d6dee09d5a30bb561ff3622
+CLIENT_IMAGE_NAME ?= quay.io/confidential-containers/kbs-client:v0.19.0
 .PHONY: test-e2e
 test-e2e:
 	./tests/scripts/kind-with-registry.sh
-	KBS_IMAGE_NAME=${KBS_IMAGE_NAME} CLIENT_IMAGE_NAME=${CLIENT_IMAGE_NAME} kubectl kuttl test || true
-	kind delete cluster
+	trap 'kind delete cluster' EXIT; \
+	KBS_IMAGE_NAME=${KBS_IMAGE_NAME} CLIENT_IMAGE_NAME=${CLIENT_IMAGE_NAME} kubectl kuttl test
 
 ##@ Build Dependencies
 
