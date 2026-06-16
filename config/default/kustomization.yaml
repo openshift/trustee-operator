@@ -31,6 +31,9 @@ patches:
 - path: manager_metrics_patch.yaml
   target:
     kind: Deployment
+- path: manager_https_port_patch.yaml
+  target:
+    kind: Deployment
 
 
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in

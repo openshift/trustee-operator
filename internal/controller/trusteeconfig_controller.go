@@ -26,6 +26,7 @@ import (
 	"text/template"
 
 	"github.com/go-logr/logr"
+	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	corev1 "k8s.io/api/core/v1"
 
@@ -45,10 +46,11 @@ import (
 // TrusteeConfigReconciler reconciles a TrusteeConfig object
 type TrusteeConfigReconciler struct {
 	client.Client
-	Scheme        *runtime.Scheme
-	trusteeConfig *confidentialcontainersorgv1alpha1.TrusteeConfig
-	log           logr.Logger
-	namespace     string
+	Scheme         *runtime.Scheme
+	TLSProfileSpec configv1.TLSProfileSpec
+	trusteeConfig  *confidentialcontainersorgv1alpha1.TrusteeConfig
+	log            logr.Logger
+	namespace      string
 }
 
 //+kubebuilder:rbac:groups=confidentialcontainers.org,resources=trusteeconfigs,verbs=get;list;watch;create;update;patch;delete
