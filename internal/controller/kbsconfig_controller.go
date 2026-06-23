@@ -123,6 +123,16 @@ func (r *KbsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
+	// Migrate ConfigMaps if needed (upgrade from v1.1.0 to v1.2.0+)
+	// This ensures seamless upgrades without requiring manual ConfigMap deletion
+	err = r.migrateConfigMapsIfNeeded(ctx)
+	if err != nil {
+		r.log.Info("ConfigMap migration encountered an error, will retry", "err", err)
+		// Don't fail the reconciliation, just requeue to retry migration later
+		// This prevents blocking the entire deployment if migration has transient issues
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
 	// Create or update the KBS deployment
 	created, err := r.deployOrUpdateKbsDeployment(ctx)
 	if err != nil {
