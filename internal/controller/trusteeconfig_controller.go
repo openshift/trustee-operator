@@ -343,9 +343,24 @@ func (r *TrusteeConfigReconciler) mergeKbsConfigSpecs(generatedSpec, manualSpec 
 		}
 	}
 
-	// Preserve manual secret resources
-	if len(manualSpec.KbsSecretResources) > 0 {
-		merged.KbsSecretResources = manualSpec.KbsSecretResources
+	// Merge secret resources: preserve manual ones and add any new generated ones
+	// Use a map to track unique secret names
+	secretResourcesMap := make(map[string]bool)
+
+	// First, add all manual secret resources
+	for _, secret := range manualSpec.KbsSecretResources {
+		secretResourcesMap[secret] = true
+	}
+
+	// Then, add any generated secret resources that aren't already present
+	for _, secret := range generatedSpec.KbsSecretResources {
+		secretResourcesMap[secret] = true
+	}
+
+	// Convert map back to slice
+	merged.KbsSecretResources = make([]string, 0, len(secretResourcesMap))
+	for secret := range secretResourcesMap {
+		merged.KbsSecretResources = append(merged.KbsSecretResources, secret)
 	}
 
 	// Preserve manual local cert cache configuration
@@ -648,14 +663,21 @@ func (r *TrusteeConfigReconciler) createOrUpdateKbsConfigMap(ctx context.Context
 		return err
 	}
 
-	// ConfigMap exists - generate new config with current TLS settings
+	// ConfigMap exists - merge TLS settings only
+	// The actual v1.1 -> v1.2 content migration is handled by KbsConfig controller
+	// in migration.go using string replacement to preserve user customizations
+	r.log.V(1).Info("Merging TLS settings into existing KBS config", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
+
+	// Get existing config data for TLS merge
+	existingConfig := found.Data["kbs-config.toml"]
+
+	// Generate fresh config to extract TLS settings
 	newConfigMap, err := r.generateKbsConfigMap(ctx)
 	if err != nil {
 		return err
 	}
 
 	newConfig := newConfigMap.Data["kbs-config.toml"]
-	existingConfig := found.Data["kbs-config.toml"]
 
 	// Merge TLS settings from new config into existing config
 	mergedConfig := mergeTlsSettings(existingConfig, newConfig)
@@ -1153,6 +1175,9 @@ func (r *TrusteeConfigReconciler) generateResourcePolicyConfigMap(ctx context.Co
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.getResourcePolicyConfigMapName(),
 			Namespace: r.namespace,
+			Annotations: map[string]string{
+				MigrationAnnotation: MigrationVersion,
+			},
 		},
 		Data: map[string]string{
 			resourcePolicyFilename: policyRego,
@@ -1257,6 +1282,9 @@ func (r *TrusteeConfigReconciler) generateAttestationPolicyConfigMap(ctx context
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.getCpuAttestationPolicyConfigMapName(),
 			Namespace: r.namespace,
+			Annotations: map[string]string{
+				MigrationAnnotation: MigrationVersion,
+			},
 		},
 		Data: map[string]string{
 			"default_cpu.rego": policyRego,
@@ -1282,6 +1310,9 @@ func (r *TrusteeConfigReconciler) generateGpuAttestationPolicyConfigMap(ctx cont
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.getGpuAttestationPolicyConfigMapName(),
 			Namespace: r.namespace,
+			Annotations: map[string]string{
+				MigrationAnnotation: MigrationVersion,
+			},
 		},
 		Data: map[string]string{
 			"default_gpu.rego": policyRegoGPU,
