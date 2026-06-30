@@ -31,7 +31,7 @@ COPY internal/controller/ internal/controller/
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 RUN CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o secret-converter cmd/secret-converter/main.go
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1773939694
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1782797275
 
 # Install dependencies for FIPS compliance.
 # RUN microdnf install -y openssl && microdnf clean all
