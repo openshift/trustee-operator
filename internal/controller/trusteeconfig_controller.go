@@ -648,14 +648,21 @@ func (r *TrusteeConfigReconciler) createOrUpdateKbsConfigMap(ctx context.Context
 		return err
 	}
 
-	// ConfigMap exists - generate new config with current TLS settings
+	// ConfigMap exists - merge TLS settings only
+	// The actual v1.1 -> v1.2 content migration is handled by KbsConfig controller
+	// in migration.go using string replacement to preserve user customizations
+	r.log.V(1).Info("Merging TLS settings into existing KBS config", "ConfigMap.Namespace", r.namespace, "ConfigMap.Name", configMapName)
+
+	// Get existing config data for TLS merge
+	existingConfig := found.Data["kbs-config.toml"]
+
+	// Generate fresh config to extract TLS settings
 	newConfigMap, err := r.generateKbsConfigMap(ctx)
 	if err != nil {
 		return err
 	}
 
 	newConfig := newConfigMap.Data["kbs-config.toml"]
-	existingConfig := found.Data["kbs-config.toml"]
 
 	// Merge TLS settings from new config into existing config
 	mergedConfig := mergeTlsSettings(existingConfig, newConfig)
