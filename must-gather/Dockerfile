@@ -19,7 +19,7 @@ COPY collection-scripts/* /usr/bin/
 
 # Red Hat labels
 LABEL name="build-of-trustee/trustee-must-gather-rhel9" \
-cpe="cpe:/a:redhat:confidential_compute_attestation:1.102::el9" \
+cpe="cpe:/a:redhat:confidential_compute_attestation:1.130::el9" \
 version="1.2.0" \
 com.redhat.component="redhat-build-of-trustee-must-gather-container" \
 summary="redhat-build-of-trustee-must-gather collects information about RedHat Build of Trustee and its components" \
