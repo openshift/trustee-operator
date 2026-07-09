@@ -65,7 +65,7 @@ LABEL vendor="Red Hat, Inc."
 LABEL version="1.2.0"
 LABEL maintainer="Red Hat"
 LABEL io.openshift.tags=""
-LABEL cpe="cpe:/a:redhat:confidential_compute_attestation:1.101::el9"
+LABEL cpe="cpe:/a:redhat:confidential_compute_attestation:1.102::el9"
 
 # Licenses
 
