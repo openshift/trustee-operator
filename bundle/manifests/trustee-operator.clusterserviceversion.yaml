@@ -5,7 +5,7 @@ metadata:
     alm-examples: '[]'
     capabilities: Basic Install
     categories: "Security"
-    containerImage: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:50dd30d9878fdd7e9bca821d46fdff775de56530acaee5888f2439887814629b"
+    containerImage: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:86f994393f9024affd43c8ea08b1ec3b0d42dc26229ba34aff0228eac9415775"
     createdAt: "2026-05-21T15:49:55Z"
     operatorframework.io/suggested-namespace: trustee-operator-system
     operators.operatorframework.io/builder: operator-sdk-v1.42.0
@@ -201,7 +201,7 @@ spec:
                     fieldRef:
                       fieldPath: metadata.namespace
                 - name: OPERATOR_IMAGE_NAME
-                  value: registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:50dd30d9878fdd7e9bca821d46fdff775de56530acaee5888f2439887814629b
+                  value: registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:86f994393f9024affd43c8ea08b1ec3b0d42dc26229ba34aff0228eac9415775
                 - name: KBS_IMAGE_NAME
                   value: "registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:85312d29d6ea7b96396b567c96893ae2527d83b9fc7a459044ba610c98593fae"
                 - name: KBS_IMAGE_NAME_MICROSERVICES
@@ -210,7 +210,7 @@ spec:
                   value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
                 - name: RVPS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/rvps:latest
-                image: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:50dd30d9878fdd7e9bca821d46fdff775de56530acaee5888f2439887814629b"
+                image: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:86f994393f9024affd43c8ea08b1ec3b0d42dc26229ba34aff0228eac9415775"
                 livenessProbe:
                   httpGet:
                     path: /healthz
