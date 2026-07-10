@@ -36,7 +36,7 @@ LABEL url="https://access.redhat.com/"
 LABEL vendor="Red Hat, Inc."
 LABEL version="1"
 LABEL maintainer="Red Hat"
-LABEL cpe="cpe:/a:redhat:confidential_compute_attestation:1.102::el9"
+LABEL cpe="cpe:/a:redhat:confidential_compute_attestation:1.130::el9"
 
 # Licenses
 
