@@ -26,6 +26,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -218,19 +219,21 @@ func (r *KbsConfigReconciler) deployOrUpdateKbsService(ctx context.Context) erro
 		return err
 	}
 
-	// Service already exists, so update the service
-	r.log.Info("Updating the service", "Service.Namespace", r.namespace, "Service.Name", KbsServiceName)
 	service := r.newKbsService(ctx)
-	// If service object is nil, return error
 	if service == nil {
 		return fmt.Errorf("failed to get KBS service definition")
 	}
-	err = r.Update(ctx, service)
-	if err != nil {
-		r.Recorder.Eventf(r.kbsConfig, nil, corev1.EventTypeWarning, "ServiceUpdateFailed", "ServiceUpdateFailed", err.Error())
-		return err
+
+	if !apiequality.Semantic.DeepEqual(found.Spec, service.Spec) {
+		found.Spec = service.Spec
+		err = r.Update(ctx, found)
+		if err != nil {
+			r.Recorder.Eventf(r.kbsConfig, nil, corev1.EventTypeWarning, "ServiceUpdateFailed", "ServiceUpdateFailed", err.Error())
+			return err
+		}
+		r.log.Info("Updated Service", "Service.Namespace", r.namespace, "Service.Name", KbsServiceName)
 	}
-	// Service updated successfully - ret
+
 	return nil
 }
 
@@ -310,15 +313,11 @@ func (r *KbsConfigReconciler) deployOrUpdateKbsDeployment(ctx context.Context) (
 		// Unknown error
 		return false, err
 	}
-	// Update the found deployment and write the result back if there are any changes
 	err = r.updateKbsDeployment(ctx, found)
 	if err != nil {
 		r.Recorder.Eventf(r.kbsConfig, nil, corev1.EventTypeWarning, "DeploymentUpdateFailed", "DeploymentUpdateFailed", err.Error())
 		return false, err
 	}
-	// Deployment updated successfully
-	r.log.Info("Updated Deployment", "Deployment.Namespace", r.namespace, "Deployment.Name", KbsDeploymentName)
-	r.Recorder.Eventf(r.kbsConfig, nil, corev1.EventTypeNormal, "DeploymentUpdated", "DeploymentUpdated", "Trustee deployment updated successfully")
 
 	return false, nil
 }
@@ -952,21 +951,19 @@ func (r *KbsConfigReconciler) updateKbsDeployment(ctx context.Context, deploymen
 		return err
 	}
 
-	// Update the entire template (spec + metadata including annotations)
-	// This ensures that changes to pod template annotations (e.g., ConfigMap versions)
-	// trigger a rolling restart
-	deployment.Spec.Template = *newDeployment.Spec.Template.DeepCopy()
-	// Update replicas if changed
-	deployment.Spec.Replicas = newDeployment.Spec.Replicas
+	if !apiequality.Semantic.DeepEqual(deployment.Spec.Template, newDeployment.Spec.Template) ||
+		!apiequality.Semantic.DeepEqual(deployment.Spec.Replicas, newDeployment.Spec.Replicas) {
+		deployment.Spec.Template = *newDeployment.Spec.Template.DeepCopy()
+		deployment.Spec.Replicas = newDeployment.Spec.Replicas
 
-	err = r.Update(ctx, deployment)
-	if err != nil {
-		return err
-	} else {
-		// Deployment updated successfully
-		r.log.Info("Updated Deployment", "Deployment.Namespace", r.namespace, "Deployment.Name", "kbs-deployment")
-		return nil
+		err = r.Update(ctx, deployment)
+		if err != nil {
+			return err
+		}
+		r.log.Info("Updated Deployment", "Deployment.Namespace", r.namespace, "Deployment.Name", KbsDeploymentName)
 	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -1169,13 +1166,13 @@ func (r *KbsConfigReconciler) updateKbsConfigStatus(ctx context.Context) error {
 		}
 	}
 
-	// Always update status to ensure it's initialized, even on first reconcile.
-	// The Status().Update() call will handle deduplication if nothing changed.
-	r.kbsConfig.Status.IsReady = newIsReady
-	err = r.Status().Update(ctx, r.kbsConfig)
-	if err != nil {
-		r.log.Info("Failed to update KbsConfig status", "err", err)
-		return err
+	if newIsReady != oldIsReady {
+		r.kbsConfig.Status.IsReady = newIsReady
+		err = r.Status().Update(ctx, r.kbsConfig)
+		if err != nil {
+			r.log.Info("Failed to update KbsConfig status", "err", err)
+			return err
+		}
 	}
 
 	return nil
