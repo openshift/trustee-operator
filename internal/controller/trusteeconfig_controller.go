@@ -23,6 +23,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"sort"
 	"text/template"
 
 	"github.com/go-logr/logr"
@@ -357,11 +358,12 @@ func (r *TrusteeConfigReconciler) mergeKbsConfigSpecs(generatedSpec, manualSpec 
 		secretResourcesMap[secret] = true
 	}
 
-	// Convert map back to slice
+	// Convert map back to slice with stable ordering
 	merged.KbsSecretResources = make([]string, 0, len(secretResourcesMap))
 	for secret := range secretResourcesMap {
 		merged.KbsSecretResources = append(merged.KbsSecretResources, secret)
 	}
+	sort.Strings(merged.KbsSecretResources)
 
 	// Preserve manual local cert cache configuration
 	if len(manualSpec.KbsLocalCertCacheSpec.Secrets) > 0 {
