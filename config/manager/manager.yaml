@@ -74,7 +74,7 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
-        image: quay.io/confidential-containers/trustee-operator:v1.2.0
+        image: quay.io/confidential-containers/trustee-operator:v1.2.1
         name: manager
         # Add the following environment variables to the manager container
         # POD_NAMESPACE
@@ -84,7 +84,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: OPERATOR_IMAGE_NAME
-          value: quay.io/confidential-containers/trustee-operator:v1.2.0
+          value: quay.io/confidential-containers/trustee-operator:v1.2.1
         - name: KBS_IMAGE_NAME
           # kbs image for AllInOneDeployment
           value: ghcr.io/confidential-containers/staged-images/kbs:b2442c222485b6ec5d6dee09d5a30bb561ff3622
