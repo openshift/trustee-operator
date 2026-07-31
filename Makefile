@@ -176,8 +176,8 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 # Run sample attestation in a kind cluster
 # pre-requirements: kuttl plugin and kind are installed
 # Usage: KBS_IMAGE_NAME=<trustee-image> CLIENT_IMAGE_NAME=<client-image> make test-e2e
-KBS_IMAGE_NAME ?= ghcr.io/confidential-containers/staged-images/kbs:b2442c222485b6ec5d6dee09d5a30bb561ff3622
-CLIENT_IMAGE_NAME ?= quay.io/confidential-containers/kbs-client:v0.19.0
+KBS_IMAGE_NAME ?= ghcr.io/confidential-containers/key-broker-service:built-in-as-v0.21.0
+CLIENT_IMAGE_NAME ?= quay.io/confidential-containers/kbs-client:v0.21.0
 .PHONY: test-e2e
 test-e2e:
 	./tests/scripts/kind-with-registry.sh
