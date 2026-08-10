@@ -629,6 +629,9 @@ func (r *TrusteeConfigReconciler) generateKbsConfigMap(ctx context.Context) (*co
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      r.getKbsConfigMapName(),
 			Namespace: r.namespace,
+			Annotations: map[string]string{
+				MigrationAnnotation: MigrationVersion,
+			},
 		},
 		Data: map[string]string{
 			"kbs-config.toml": configToml,
