@@ -387,6 +387,22 @@ func (r *TrusteeConfigReconciler) mergeKbsConfigSpecs(generatedSpec, manualSpec 
 	return merged
 }
 
+// ensureSecretLabels patches standard labels onto an existing secret if missing.
+func (r *TrusteeConfigReconciler) ensureSecretLabels(ctx context.Context, secret *corev1.Secret, component string) error {
+	expected := standardLabels(r.trusteeConfig.Name, component)
+	if hasStandardLabels(secret.Labels, expected) {
+		return nil
+	}
+	if secret.Labels == nil {
+		secret.Labels = make(map[string]string)
+	}
+	for k, v := range expected {
+		secret.Labels[k] = v
+	}
+	r.log.Info("Patching standard labels onto existing secret", "Secret.Name", secret.Name)
+	return r.Update(ctx, secret)
+}
+
 // buildKbsConfigSpec builds the KbsConfigSpec based on TrusteeConfig.
 // Returns an error if any required resource cannot be created so that
 // Reconcile can return the error and let controller-runtime retry rather
@@ -733,6 +749,7 @@ func (r *TrusteeConfigReconciler) generateKbsAuthSecret(ctx context.Context) (*c
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: r.namespace,
+			Labels:    standardLabels(r.trusteeConfig.Name, "auth"),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: data,
@@ -759,6 +776,7 @@ func (r *TrusteeConfigReconciler) generateKbsSampleSecret(ctx context.Context) (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: r.namespace,
+			Labels:    standardLabels(r.trusteeConfig.Name, "sample"),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: data,
@@ -808,8 +826,11 @@ func (r *TrusteeConfigReconciler) createOrUpdateKbsAuthSecret(ctx context.Contex
 	} else if err != nil {
 		return err
 	} else {
-		// Secret already exists, preserve its content
+		// Secret already exists, preserve its content and ensure labels are added
 		r.log.Info("KBS auth secret already exists, preserving existing content", "Secret.Namespace", r.namespace, "Secret.Name", secretName)
+		if err := r.ensureSecretLabels(ctx, found, "auth"); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -840,8 +861,11 @@ func (r *TrusteeConfigReconciler) createOrUpdateKbsSampleSecret(ctx context.Cont
 	} else if err != nil {
 		return err
 	} else {
-		// Secret already exists, preserve its content
+		// Secret already exists, preserve its content and ensure labels are added
 		r.log.Info("KBS sample secret already exists, preserving existing content", "Secret.Namespace", r.namespace, "Secret.Name", secretName)
+		if err := r.ensureSecretLabels(ctx, found, "sample"); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -922,8 +946,11 @@ func (r *TrusteeConfigReconciler) createOrUpdateHttpsKeySecret(ctx context.Conte
 	} else if err != nil {
 		return err
 	} else {
-		// Secret already exists, preserve its content
+		// Secret already exists, preserve its content and ensure labels are added
 		r.log.Info("HTTPS key secret already exists, preserving existing content", "Secret.Namespace", r.namespace, "Secret.Name", secretName)
+		if err := r.ensureSecretLabels(ctx, found, "https"); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -953,8 +980,11 @@ func (r *TrusteeConfigReconciler) createOrUpdateHttpsCertSecret(ctx context.Cont
 	} else if err != nil {
 		return err
 	} else {
-		// Secret already exists, preserve its content
+		// Secret already exists, preserve its content and ensure labels are added
 		r.log.Info("HTTPS certificate secret already exists, preserving existing content", "Secret.Namespace", r.namespace, "Secret.Name", secretName)
+		if err := r.ensureSecretLabels(ctx, found, "https"); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -971,6 +1001,7 @@ func (r *TrusteeConfigReconciler) generateHttpsKeySecret(keyData []byte) (*corev
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: r.namespace,
+			Labels:    standardLabels(r.trusteeConfig.Name, "https"),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: data,
@@ -993,6 +1024,7 @@ func (r *TrusteeConfigReconciler) generateHttpsCertSecret(certData []byte) (*cor
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: r.namespace,
+			Labels:    standardLabels(r.trusteeConfig.Name, "https"),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: data,
@@ -1079,8 +1111,11 @@ func (r *TrusteeConfigReconciler) createOrUpdateAttestationKeySecret(ctx context
 	} else if err != nil {
 		return err
 	} else {
-		// Secret already exists, preserve its content
+		// Secret already exists, preserve its content and ensure labels are added
 		r.log.Info("Attestation key secret already exists, preserving existing content", "Secret.Namespace", r.namespace, "Secret.Name", secretName)
+		if err := r.ensureSecretLabels(ctx, found, "attestation"); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -1110,8 +1145,11 @@ func (r *TrusteeConfigReconciler) createOrUpdateAttestationCertSecret(ctx contex
 	} else if err != nil {
 		return err
 	} else {
-		// Secret already exists, preserve its content
+		// Secret already exists, preserve its content and ensure labels are added
 		r.log.Info("Attestation certificate secret already exists, preserving existing content", "Secret.Namespace", r.namespace, "Secret.Name", secretName)
+		if err := r.ensureSecretLabels(ctx, found, "attestation"); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -1128,6 +1166,7 @@ func (r *TrusteeConfigReconciler) generateAttestationCertSecret(certData []byte)
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: r.namespace,
+			Labels:    standardLabels(r.trusteeConfig.Name, "attestation"),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: data,
@@ -1160,6 +1199,7 @@ func (r *TrusteeConfigReconciler) generateAttestationKeySecret(keyData []byte) (
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: r.namespace,
+			Labels:    standardLabels(r.trusteeConfig.Name, "attestation"),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: data,
