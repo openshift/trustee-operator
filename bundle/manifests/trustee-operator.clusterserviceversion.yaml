@@ -164,6 +164,14 @@ spec:
           - subjectaccessreviews
           verbs:
           - create
+        - apiGroups:
+          - networking.k8s.io
+          resources:
+          - networkpolicies
+          verbs:
+          - create
+          - delete
+          - update
         serviceAccountName: trustee-operator-controller-manager
       deployments:
       - label:
