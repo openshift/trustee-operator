@@ -90,7 +90,7 @@ spec:
           value: ghcr.io/confidential-containers/staged-images/kbs:b2442c222485b6ec5d6dee09d5a30bb561ff3622
           # kbs image for MicroserviceDeployment
         - name: KBS_IMAGE_NAME_MICROSERVICES
-          value: ghcr.io/confidential-containers/key-broker-service:v0.19.0
+          value: ghcr.io/confidential-containers/key-broker-service:v0.21.0
         - name: AS_IMAGE_NAME
           value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
         - name: RVPS_IMAGE_NAME
