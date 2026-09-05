@@ -2,7 +2,7 @@ module github.com/confidential-containers/trustee-operator
 
 go 1.25.0
 
-toolchain go1.26.7
+toolchain go1.27.1
 
 require (
 	github.com/go-logr/logr v1.4.3
