@@ -242,20 +242,34 @@ dir_path = "/opt/confidential-containers/kbs/repository"
 policy_path = "/opt/confidential-containers/opa/policy.rego"`
 
 	tests := []struct {
-		name             string
-		inputData        map[string]string
-		inputAnnotations map[string]string
-		expectDeleted    bool
-		expectPreserved  bool
+		name                  string
+		inputData             map[string]string
+		inputAnnotations      map[string]string
+		ownedByTrusteeConfig  bool
+		expectDeleted         bool
+		expectPreserved       bool
+		expectMigratedInPlace bool
 	}{
 		{
-			name: "Old format KBS config with v1.1.0 paths - should delete and save plugins",
+			name: "Old format TrusteeConfig-managed KBS config - should delete and save plugins",
 			inputData: map[string]string{
 				"kbs-config.toml": oldKbsConfigToml,
 			},
-			inputAnnotations: nil,
-			expectDeleted:    true,
-			expectPreserved:  false,
+			inputAnnotations:     nil,
+			ownedByTrusteeConfig: true,
+			expectDeleted:        true,
+			expectPreserved:      false,
+		},
+		{
+			name: "Old format standalone KBS config - should migrate in place, never delete",
+			inputData: map[string]string{
+				"kbs-config.toml": oldKbsConfigToml,
+			},
+			inputAnnotations:      nil,
+			ownedByTrusteeConfig:  false,
+			expectDeleted:         false,
+			expectPreserved:       false,
+			expectMigratedInPlace: true,
 		},
 		{
 			name: "Already migrated KBS config - should preserve",
@@ -284,6 +298,16 @@ policy_path = "/opt/confidential-containers/opa/policy.rego"`
 					Annotations: tt.inputAnnotations,
 				},
 				Data: tt.inputData,
+			}
+			if tt.ownedByTrusteeConfig {
+				configMap.OwnerReferences = []metav1.OwnerReference{
+					{
+						APIVersion: "confidentialcontainers.org/v1alpha1",
+						Kind:       "TrusteeConfig",
+						Name:       "test-trusteeconfig",
+						UID:        "test-uid",
+					},
+				}
 			}
 
 			kbsConfig := &confidentialcontainersorgv1alpha1.KbsConfig{
@@ -357,6 +381,28 @@ policy_path = "/opt/confidential-containers/opa/policy.rego"`
 				}
 				if updatedConfigMap.Annotations[MigrationAnnotation] != MigrationVersion {
 					t.Errorf("Expected migration annotation to be preserved, got %v", updatedConfigMap.Annotations)
+				}
+			}
+
+			if tt.expectMigratedInPlace {
+				// Standalone ConfigMap must survive and be annotated as migrated.
+				if err != nil {
+					t.Fatalf("Expected standalone ConfigMap to be preserved, got error: %v", err)
+				}
+				if updatedConfigMap.Annotations[MigrationAnnotation] != MigrationVersion {
+					t.Errorf("Expected in-place migration annotation, got %v", updatedConfigMap.Annotations)
+				}
+				// The original TOML data must be left untouched (no delete/recreate).
+				if _, hasToml := updatedConfigMap.Data["kbs-config.toml"]; !hasToml {
+					t.Errorf("Expected standalone ConfigMap to retain kbs-config.toml")
+				}
+				// A safety backup should still be created.
+				backupConfigMap := &corev1.ConfigMap{}
+				backupName := "test-kbs-config" + BackupSuffix
+				if err := fakeClient.Get(context.Background(),
+					types.NamespacedName{Name: backupName, Namespace: "default"},
+					backupConfigMap); err != nil {
+					t.Fatalf("Expected backup ConfigMap %s to exist, got error: %v", backupName, err)
 				}
 			}
 		})
@@ -437,29 +483,44 @@ policy_path = "/opt/confidential-containers/storage/kbs/resource-policy.rego"`
 
 func TestMigrateResourcePolicyConfigMap(t *testing.T) {
 	tests := []struct {
-		name             string
-		inputData        map[string]string
-		inputAnnotations map[string]string
-		expectDeleted    bool
-		expectPreserved  bool
+		name                  string
+		inputData             map[string]string
+		inputAnnotations      map[string]string
+		ownedByTrusteeConfig  bool
+		expectDeleted         bool
+		expectPreserved       bool
+		expectMigratedInPlace bool
 	}{
 		{
-			name: "Old format without migration annotation - should delete",
+			name: "TrusteeConfig-managed old format without migration annotation - should delete",
 			inputData: map[string]string{
 				"policy.rego": "package policy\ndefault allow = false",
 			},
-			inputAnnotations: nil,
-			expectDeleted:    true,
-			expectPreserved:  false,
+			inputAnnotations:     nil,
+			ownedByTrusteeConfig: true,
+			expectDeleted:        true,
+			expectPreserved:      false,
 		},
 		{
-			name: "New format without migration annotation - should delete",
+			name: "TrusteeConfig-managed new format without migration annotation - should delete",
 			inputData: map[string]string{
 				"resource-policy.rego": "package policy\ndefault allow = false",
 			},
-			inputAnnotations: nil,
-			expectDeleted:    true,
-			expectPreserved:  false,
+			inputAnnotations:     nil,
+			ownedByTrusteeConfig: true,
+			expectDeleted:        true,
+			expectPreserved:      false,
+		},
+		{
+			name: "Standalone policy without migration annotation - should migrate in place, never delete",
+			inputData: map[string]string{
+				"resource-policy.rego": "package policy\ndefault allow = false",
+			},
+			inputAnnotations:      nil,
+			ownedByTrusteeConfig:  false,
+			expectDeleted:         false,
+			expectPreserved:       false,
+			expectMigratedInPlace: true,
 		},
 		{
 			name: "Already migrated - should preserve",
@@ -488,6 +549,16 @@ func TestMigrateResourcePolicyConfigMap(t *testing.T) {
 					Annotations: tt.inputAnnotations,
 				},
 				Data: tt.inputData,
+			}
+			if tt.ownedByTrusteeConfig {
+				configMap.OwnerReferences = []metav1.OwnerReference{
+					{
+						APIVersion: "confidentialcontainers.org/v1alpha1",
+						Kind:       "TrusteeConfig",
+						Name:       "test-trusteeconfig",
+						UID:        "test-uid",
+					},
+				}
 			}
 
 			kbsConfig := &confidentialcontainersorgv1alpha1.KbsConfig{
@@ -541,6 +612,24 @@ func TestMigrateResourcePolicyConfigMap(t *testing.T) {
 				}
 				if updatedConfigMap.Annotations[MigrationAnnotation] != MigrationVersion {
 					t.Errorf("Expected migration annotation to be preserved, got %v", updatedConfigMap.Annotations)
+				}
+			}
+
+			if tt.expectMigratedInPlace {
+				// Standalone policy ConfigMap must survive and be annotated.
+				if err != nil {
+					t.Fatalf("Expected standalone ConfigMap to be preserved, got error: %v", err)
+				}
+				if updatedConfigMap.Annotations[MigrationAnnotation] != MigrationVersion {
+					t.Errorf("Expected in-place migration annotation, got %v", updatedConfigMap.Annotations)
+				}
+				// A safety backup should still be created.
+				backupConfigMap := &corev1.ConfigMap{}
+				backupName := "test-resource-policy" + BackupSuffix
+				if err := fakeClient.Get(context.Background(),
+					types.NamespacedName{Name: backupName, Namespace: "default"},
+					backupConfigMap); err != nil {
+					t.Fatalf("Expected backup ConfigMap %s to exist, got error: %v", backupName, err)
 				}
 			}
 		})
