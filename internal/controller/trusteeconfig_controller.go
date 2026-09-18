@@ -46,7 +46,11 @@ import (
 // TrusteeConfigReconciler reconciles a TrusteeConfig object
 type TrusteeConfigReconciler struct {
 	client.Client
-	Scheme        *runtime.Scheme
+	Scheme *runtime.Scheme
+	// IsOpenShift gates OpenShift-specific handling (Route creation). It must be
+	// set from the route.openshift.io API capability; when false the Route API
+	// is absent and Route management is skipped.
+	IsOpenShift   bool
 	trusteeConfig *confidentialcontainersorgv1alpha1.TrusteeConfig
 	log           logr.Logger
 	namespace     string
@@ -108,20 +112,27 @@ func (r *TrusteeConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("failed to create or update KbsConfig")
 	}
 
-	if r.trusteeConfig.Spec.HttpsSpec.TlsSecretName != "" {
-		// Create passthrough route since https is enabled
-		err = r.createKbsRoute(ctx, routev1.TLSTerminationPassthrough)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("error creating Trustee passthrough route: %w", err)
+	// Routes are an OpenShift-only concept (route.openshift.io). Skip Route
+	// management on clusters that do not serve the Route API, otherwise the
+	// Route call fails and reconciliation exits before the status update below.
+	if r.IsOpenShift {
+		if r.trusteeConfig.Spec.HttpsSpec.TlsSecretName != "" {
+			// Create passthrough route since https is enabled
+			err = r.createKbsRoute(ctx, routev1.TLSTerminationPassthrough)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("error creating Trustee passthrough route: %w", err)
+			}
+			r.log.Info("Successfully created Trustee passthrough route")
+		} else {
+			// Http, create an edge route
+			err := r.createKbsRoute(ctx, routev1.TLSTerminationEdge)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("error creating Trustee edge route: %w", err)
+			}
+			r.log.Info("Successfully created Trustee edge route")
 		}
-		r.log.Info("Successfully created Trustee passthrough route")
 	} else {
-		// Http, create an edge route
-		err := r.createKbsRoute(ctx, routev1.TLSTerminationEdge)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("error creating Trustee edge route: %w", err)
-		}
-		r.log.Info("Successfully created Trustee edge route")
+		r.log.Info("Route API not available, skipping Trustee route creation")
 	}
 
 	// Set the KbsConfig reference
