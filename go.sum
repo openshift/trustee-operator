@@ -109,8 +109,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/onsi/ginkgo/v2 v2.28.1 h1:S4hj+HbZp40fNKuLUQOYLDgZLwNUVn19N3Atb98NCyI=
 github.com/onsi/ginkgo/v2 v2.28.1/go.mod h1:CLtbVInNckU3/+gC8LzkGUb9oF+e8W8TdUsxPwvdOgE=
-github.com/onsi/gomega v1.39.1 h1:1IJLAad4zjPn2PsnhH70V4DKRFlrCzGBNrNaru+Vf28=
-github.com/onsi/gomega v1.39.1/go.mod h1:hL6yVALoTOxeWudERyfppUcZXjMwIMLnuSfruD2lcfg=
+github.com/onsi/gomega v1.43.0 h1:VlG/1FxqNxhSO+lq/OHBNaaqwiBK/mO8JbVkX9Y+FeU=
+github.com/onsi/gomega v1.43.0/go.mod h1:REff/hsDsodHoKlWsP2mAPhu1+5/6hVYNf9rIEBpeSg=
 github.com/openshift/api v0.0.0-20260521125114-09730f85d883 h1:So9yxVJRY+F1aVBjcDw6N3M4h30wyH/GpkazK8xT4TI=
 github.com/openshift/api v0.0.0-20260521125114-09730f85d883/go.mod h1:pyVjK0nZ4sRs4fuQVQ4rubsJdahI1PB94LnQ8sGdvxo=
 github.com/openshift/controller-runtime-common v0.0.0-20260428152732-64ee174f5e2e h1:k89oIo2EjX0PRSdi1kesktCyWp50SC9WwKurvupvRGs=
