@@ -17,16 +17,56 @@ package utils
 
 import (
 	"context"
+	"errors"
+	"net"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 )
 
 // discoveryTimeout bounds a single API discovery attempt so an unresponsive API
-// server cannot block the operator before the manager starts.
+// server cannot block the operator before the manager starts. The overall call
+// may make several such attempts (see discoveryBackoff).
 const discoveryTimeout = 10 * time.Second
+
+// discoveryBackoff bounds the retries for the one-shot cluster-type detection at
+// startup. The API server may be briefly throttling or unreachable right after the
+// operator pod is scheduled; retrying transient failures here avoids an otherwise
+// certain CrashLoopBackoff. Roughly 0.5s, 1s, 2s, 4s between attempts (~7.5s of
+// backoff on top of the per-attempt discoveryTimeout).
+var discoveryBackoff = wait.Backoff{
+	Steps:    5,
+	Duration: 500 * time.Millisecond,
+	Factor:   2.0,
+	Jitter:   0.1,
+}
+
+// isRetriableDiscoveryErr reports whether a discovery error is transient and worth
+// retrying. Permanent errors (e.g. forbidden/RBAC) are not retried so the operator
+// fails fast instead of burning the backoff budget on an inevitable failure.
+func isRetriableDiscoveryErr(err error) bool {
+	// Transient server-side conditions reported as APIStatus errors.
+	if apierrors.IsServerTimeout(err) ||
+		apierrors.IsTimeout(err) ||
+		apierrors.IsTooManyRequests(err) ||
+		apierrors.IsServiceUnavailable(err) ||
+		apierrors.IsInternalError(err) ||
+		apierrors.IsUnexpectedServerError(err) {
+		return true
+	}
+
+	// Transport-level failures (connection refused, DNS lookup failures, dial
+	// timeouts) carry no APIStatus and surface as net errors. These are common
+	// while the API server is still coming up right after the operator pod is
+	// scheduled, so treat them as retriable too.
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
 
 // PlatformCapabilities reports which OpenShift-specific API capabilities the
 // cluster serves. The two flags are independent because a cluster may expose
@@ -44,10 +84,11 @@ type PlatformCapabilities struct {
 }
 
 // DetectPlatformCapabilities queries the cluster's API groups and reports which
-// OpenShift API capabilities are available. The discovery attempt is bounded by
-// discoveryTimeout, and the call also returns promptly if ctx is cancelled.
-// Because the per-attempt timeout is bounded, the discovery goroutine cannot run
-// indefinitely even after the caller has returned.
+// OpenShift API capabilities are available. Each discovery attempt is bounded by
+// discoveryTimeout, and transient failures are retried with discoveryBackoff; the
+// call also returns promptly if ctx is cancelled. Because both the number of
+// attempts and the per-attempt timeout are bounded, the discovery goroutine cannot
+// run indefinitely even after the caller has returned.
 func DetectPlatformCapabilities(ctx context.Context, config *rest.Config) (PlatformCapabilities, error) {
 	caps := PlatformCapabilities{}
 
@@ -66,15 +107,22 @@ func DetectPlatformCapabilities(ctx context.Context, config *rest.Config) (Platf
 	}
 
 	// Run the (context-unaware) discovery call in a goroutine so we can return
-	// promptly when ctx is cancelled; the per-attempt timeout guarantees the
-	// goroutine cannot leak indefinitely.
+	// promptly when ctx is cancelled; the per-attempt timeout and the bounded
+	// retry steps guarantee the goroutine cannot leak indefinitely. Transient
+	// failures (throttling, server timeouts, API server briefly unavailable at
+	// startup) are retried with backoff.
 	type result struct {
 		groups *metav1.APIGroupList
 		err    error
 	}
 	ch := make(chan result, 1)
 	go func() {
-		groups, err := dc.ServerGroups()
+		var groups *metav1.APIGroupList
+		err := retry.OnError(discoveryBackoff, isRetriableDiscoveryErr, func() error {
+			var listErr error
+			groups, listErr = dc.ServerGroups()
+			return listErr
+		})
 		ch <- result{groups: groups, err: err}
 	}()
 
