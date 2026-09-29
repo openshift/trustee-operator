@@ -896,6 +896,34 @@ func (r *KbsConfigReconciler) getClusterProxyEnvVars(ctx context.Context) map[st
 	return proxyEnvVars
 }
 
+// proxyEnvVarKeys are the environment variable names (both canonical uppercase
+// and lowercase variants) that configure outbound proxying for the KBS operand.
+var proxyEnvVarKeys = []string{
+	"HTTP_PROXY", "http_proxy",
+	"HTTPS_PROXY", "https_proxy",
+	"NO_PROXY", "no_proxy",
+}
+
+// getEffectiveProxyEnvVars returns the proxy settings that actually apply to the
+// KBS operand: the cluster-wide proxy (OpenShift) with any proxy-related
+// KbsEnvVars overrides applied on top. This mirrors the precedence used in
+// buildEnvVars so the NetworkPolicy egress rules stay consistent with the env
+// vars injected into the operand containers.
+func (r *KbsConfigReconciler) getEffectiveProxyEnvVars(ctx context.Context) map[string]string {
+	effective := r.getClusterProxyEnvVars(ctx)
+
+	// User-specified KbsEnvVars override cluster proxy settings.
+	if r.kbsConfig.Spec.KbsEnvVars != nil {
+		for _, k := range proxyEnvVarKeys {
+			if v, ok := r.kbsConfig.Spec.KbsEnvVars[k]; ok {
+				effective[k] = v
+			}
+		}
+	}
+
+	return effective
+}
+
 func buildEnvVars(r *KbsConfigReconciler, ctx context.Context) []corev1.EnvVar {
 	env := make([]corev1.EnvVar, 0)
 

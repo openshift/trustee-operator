@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/go-logr/logr"
+	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,6 +48,9 @@ func newNetworkPolicyTestReconciler(t *testing.T, isOpenShift bool, objs ...clie
 	}
 	if err := confidentialcontainersorgv1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add v1alpha1 to scheme: %v", err)
+	}
+	if err := configv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add configv1 to scheme: %v", err)
 	}
 
 	kbsConfig := &confidentialcontainersorgv1alpha1.KbsConfig{
@@ -77,7 +81,7 @@ func newNetworkPolicyTestReconciler(t *testing.T, isOpenShift bool, objs ...clie
 func TestNewKbsNetworkPolicies(t *testing.T) {
 	r, kbsConfig := newNetworkPolicyTestReconciler(t, true)
 
-	policies, err := r.newKbsNetworkPolicies()
+	policies, err := r.newKbsNetworkPolicies(context.Background())
 	if err != nil {
 		t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
 	}
@@ -131,7 +135,7 @@ func TestNewKbsNetworkPolicies(t *testing.T) {
 
 func TestNewKbsNetworkPolicies_DenyAll(t *testing.T) {
 	r, _ := newNetworkPolicyTestReconciler(t, true)
-	policies, err := r.newKbsNetworkPolicies()
+	policies, err := r.newKbsNetworkPolicies(context.Background())
 	if err != nil {
 		t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
 	}
@@ -160,7 +164,7 @@ func TestNewKbsNetworkPolicies_AllowIngress(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r, _ := newNetworkPolicyTestReconciler(t, tt.isOpenShift)
-			policies, err := r.newKbsNetworkPolicies()
+			policies, err := r.newKbsNetworkPolicies(context.Background())
 			if err != nil {
 				t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
 			}
@@ -214,7 +218,7 @@ func TestNewKbsNetworkPolicies_EgressDNS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r, _ := newNetworkPolicyTestReconciler(t, tt.isOpenShift)
-			policies, err := r.newKbsNetworkPolicies()
+			policies, err := r.newKbsNetworkPolicies(context.Background())
 			if err != nil {
 				t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
 			}
@@ -248,7 +252,7 @@ func TestNewKbsNetworkPolicies_EgressDNS(t *testing.T) {
 
 func TestNewKbsNetworkPolicies_EgressAttestation(t *testing.T) {
 	r, _ := newNetworkPolicyTestReconciler(t, true)
-	policies, err := r.newKbsNetworkPolicies()
+	policies, err := r.newKbsNetworkPolicies(context.Background())
 	if err != nil {
 		t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
 	}
@@ -266,6 +270,158 @@ func TestNewKbsNetworkPolicies_EgressAttestation(t *testing.T) {
 	}
 	if !egressRuleHasPort(np.Spec.Egress[0], corev1.ProtocolTCP, 443) {
 		t.Errorf("attestation egress must open TCP 443")
+	}
+}
+
+func TestNewKbsNetworkPolicies_EgressAttestation_ClusterProxy(t *testing.T) {
+	// A cluster-wide proxy on a non-443 port must be opened for egress so KBS can
+	// tunnel its outbound attestation traffic through the proxy.
+	proxy := &configv1.Proxy{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster"},
+		Spec: configv1.ProxySpec{
+			HTTPSProxy: "http://proxy.example.com:3128",
+		},
+	}
+	r, _ := newNetworkPolicyTestReconciler(t, true, proxy)
+
+	policies, err := r.newKbsNetworkPolicies(context.Background())
+	if err != nil {
+		t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
+	}
+
+	np := findPolicy(t, policies, kbsNetworkPolicyAllowEgressAttest)
+	if len(np.Spec.Egress) != 1 {
+		t.Fatalf("expected 1 egress rule, got %d", len(np.Spec.Egress))
+	}
+	// The :443 baseline must still be present alongside the proxy port.
+	if !egressRuleHasPort(np.Spec.Egress[0], corev1.ProtocolTCP, 443) {
+		t.Errorf("attestation egress must still open TCP 443")
+	}
+	if !egressRuleHasPort(np.Spec.Egress[0], corev1.ProtocolTCP, 3128) {
+		t.Errorf("attestation egress must open the proxy port TCP 3128")
+	}
+	// The destination stays unrestricted: the proxy host cannot be matched by DNS.
+	if len(np.Spec.Egress[0].To) != 0 {
+		t.Errorf("attestation egress must not restrict destinations, got %v", np.Spec.Egress[0].To)
+	}
+}
+
+func TestNewKbsNetworkPolicies_EgressAttestation_KbsEnvVarsProxy(t *testing.T) {
+	// A proxy configured via KbsEnvVars (e.g. on vanilla Kubernetes, where there is
+	// no cluster Proxy CR) must also open the proxy port.
+	r, _ := newNetworkPolicyTestReconciler(t, false)
+	r.kbsConfig.Spec.KbsEnvVars = map[string]string{
+		"HTTPS_PROXY": "https://proxy.internal:8080",
+	}
+
+	policies, err := r.newKbsNetworkPolicies(context.Background())
+	if err != nil {
+		t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
+	}
+
+	np := findPolicy(t, policies, kbsNetworkPolicyAllowEgressAttest)
+	if !egressRuleHasPort(np.Spec.Egress[0], corev1.ProtocolTCP, 443) {
+		t.Errorf("attestation egress must still open TCP 443")
+	}
+	if !egressRuleHasPort(np.Spec.Egress[0], corev1.ProtocolTCP, 8080) {
+		t.Errorf("attestation egress must open the proxy port TCP 8080")
+	}
+}
+
+func TestNewKbsNetworkPolicies_EgressAttestation_ProxyOn443(t *testing.T) {
+	// A proxy that already listens on 443 must not add a duplicate port entry.
+	proxy := &configv1.Proxy{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster"},
+		Spec: configv1.ProxySpec{
+			HTTPSProxy: "https://proxy.example.com:443",
+		},
+	}
+	r, _ := newNetworkPolicyTestReconciler(t, true, proxy)
+
+	policies, err := r.newKbsNetworkPolicies(context.Background())
+	if err != nil {
+		t.Fatalf("newKbsNetworkPolicies returned error: %v", err)
+	}
+
+	np := findPolicy(t, policies, kbsNetworkPolicyAllowEgressAttest)
+	count := 0
+	for _, p := range np.Spec.Egress[0].Ports {
+		if p.Port != nil && p.Port.IntVal == 443 {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly one TCP 443 port entry, got %d", count)
+	}
+}
+
+func TestProxyEgressPorts(t *testing.T) {
+	tests := []struct {
+		name     string
+		proxyEnv map[string]string
+		want     []int32
+	}{
+		{name: "none", proxyEnv: nil, want: nil},
+		{name: "https explicit port", proxyEnv: map[string]string{"HTTPS_PROXY": "http://p:3128"}, want: []int32{3128}},
+		{name: "no scheme", proxyEnv: map[string]string{"HTTPS_PROXY": "p.example.com:8888"}, want: []int32{8888}},
+		{name: "https default port", proxyEnv: map[string]string{"HTTPS_PROXY": "https://p"}, want: []int32{443}},
+		{name: "http default port", proxyEnv: map[string]string{"HTTP_PROXY": "http://p"}, want: []int32{80}},
+		{
+			name:     "distinct https and http ports sorted",
+			proxyEnv: map[string]string{"HTTPS_PROXY": "http://p:8080", "HTTP_PROXY": "http://p:3128"},
+			want:     []int32{3128, 8080},
+		},
+		{
+			name:     "same port deduped",
+			proxyEnv: map[string]string{"HTTPS_PROXY": "http://p:3128", "HTTP_PROXY": "http://p:3128"},
+			want:     []int32{3128},
+		},
+		{name: "lowercase key", proxyEnv: map[string]string{"https_proxy": "http://p:3128"}, want: []int32{3128}},
+		{name: "empty value ignored", proxyEnv: map[string]string{"HTTPS_PROXY": ""}, want: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := proxyEgressPorts(tt.proxyEnv)
+			if len(got) != len(tt.want) {
+				t.Fatalf("expected ports %v, got %v", tt.want, got)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("port[%d]: expected %d, got %d", i, tt.want[i], got[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseProxyPort(t *testing.T) {
+	tests := []struct {
+		raw    string
+		want   int32
+		wantOK bool
+	}{
+		{raw: "http://p:3128", want: 3128, wantOK: true},
+		{raw: "p.example.com:8080", want: 8080, wantOK: true},
+		{raw: "https://p", want: 443, wantOK: true},
+		{raw: "http://p", want: 80, wantOK: true},
+		{raw: "  http://p:3128  ", want: 3128, wantOK: true},
+		{raw: "", wantOK: false},
+		{raw: "socks5://p", wantOK: false},
+		{raw: "http://p:0", wantOK: false},
+		{raw: "http://p:99999", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.raw, func(t *testing.T) {
+			got, ok := parseProxyPort(tt.raw)
+			if ok != tt.wantOK {
+				t.Fatalf("expected ok=%v, got %v", tt.wantOK, ok)
+			}
+			if ok && got != tt.want {
+				t.Errorf("expected port %d, got %d", tt.want, got)
+			}
+		})
 	}
 }
 
