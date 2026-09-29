@@ -18,6 +18,10 @@ package controllers
 
 import (
 	"context"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -64,7 +68,7 @@ var kbsPodSelector = metav1.LabelSelector{
 // KbsConfig CR and watched via Owns() in SetupWithManager, so a user who edits or
 // deletes one has it restored on the next reconcile.
 func (r *KbsConfigReconciler) deployOrUpdateKbsNetworkPolicies(ctx context.Context) error {
-	policies, err := r.newKbsNetworkPolicies()
+	policies, err := r.newKbsNetworkPolicies(ctx)
 	if err != nil {
 		return err
 	}
@@ -107,7 +111,7 @@ func (r *KbsConfigReconciler) deployOrUpdateKbsNetworkPolicies(ctx context.Conte
 // newKbsNetworkPolicies builds the full set of NetworkPolicies for the KBS operand.
 // Each policy selects the operand pods (app=kbs) in the controller namespace and is
 // owner-referenced to the KbsConfig CR so it is garbage collected with the operand.
-func (r *KbsConfigReconciler) newKbsNetworkPolicies() ([]*networkingv1.NetworkPolicy, error) {
+func (r *KbsConfigReconciler) newKbsNetworkPolicies(ctx context.Context) ([]*networkingv1.NetworkPolicy, error) {
 	tcp := corev1.ProtocolTCP
 	udp := corev1.ProtocolUDP
 	port8080 := intstr.FromInt(8080)
@@ -221,6 +225,22 @@ func (r *KbsConfigReconciler) newKbsNetworkPolicies() ([]*networkingv1.NetworkPo
 	// the connected profile: AMD KDS, Intel PCS/Trust Authority, NVIDIA NRAS.
 	// NetworkPolicy cannot match destinations by DNS name, so this allows :443 to any
 	// destination as a portable baseline.
+	attestationPorts := []networkingv1.NetworkPolicyPort{
+		{Protocol: &tcp, Port: &port443},
+	}
+	// When a cluster-wide or user-specified proxy is configured, KBS reaches the
+	// external peers through the proxy host:port instead of directly on :443.
+	// Proxies commonly listen on a non-443 port (e.g. 3128, 8080), which the :443
+	// rule above would not admit, so open the proxy port(s) too. As with :443, the
+	// proxy host cannot be matched by DNS name, so only the port is opened.
+	proxyEnv := r.getEffectiveProxyEnvVars(ctx)
+	for _, p := range proxyEgressPorts(proxyEnv) {
+		if p == 443 {
+			continue // already covered by the baseline rule
+		}
+		proxyPort := intstr.FromInt(int(p))
+		attestationPorts = append(attestationPorts, networkingv1.NetworkPolicyPort{Protocol: &tcp, Port: &proxyPort})
+	}
 	allowEgressAttestation := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kbsNetworkPolicyAllowEgressAttest,
@@ -232,9 +252,7 @@ func (r *KbsConfigReconciler) newKbsNetworkPolicies() ([]*networkingv1.NetworkPo
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
 			Egress: []networkingv1.NetworkPolicyEgressRule{
 				{
-					Ports: []networkingv1.NetworkPolicyPort{
-						{Protocol: &tcp, Port: &port443},
-					},
+					Ports: attestationPorts,
 				},
 			},
 		},
@@ -257,4 +275,66 @@ func (r *KbsConfigReconciler) newKbsNetworkPolicies() ([]*networkingv1.NetworkPo
 	}
 
 	return policies, nil
+}
+
+// proxyEgressPorts returns the distinct TCP ports the KBS operand must be allowed
+// to reach in order to use the configured proxies. It inspects the HTTPS and HTTP
+// proxy settings (both case variants) and returns their ports in ascending order.
+// Returns nil when no usable proxy is configured. NO_PROXY is intentionally
+// ignored: it only narrows which destinations bypass the proxy and does not
+// require any additional egress port.
+func proxyEgressPorts(proxyEnv map[string]string) []int32 {
+	seen := make(map[int32]struct{})
+	var ports []int32
+	for _, key := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
+		raw := proxyEnv[key]
+		if raw == "" {
+			continue
+		}
+		port, ok := parseProxyPort(raw)
+		if !ok {
+			continue
+		}
+		if _, dup := seen[port]; dup {
+			continue
+		}
+		seen[port] = struct{}{}
+		ports = append(ports, port)
+	}
+	slices.Sort(ports)
+	return ports
+}
+
+// parseProxyPort extracts the TCP port from a proxy URL. Proxy values may omit
+// the scheme (e.g. "proxy.example.com:3128"); in that case a default scheme is
+// assumed so the host:port can be parsed. When no explicit port is present the
+// scheme default is used (http -> 80, https -> 443). It returns false when the
+// value cannot be parsed into a valid port.
+func parseProxyPort(raw string) (int32, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return 0, false
+	}
+	if p := u.Port(); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 {
+			return 0, false
+		}
+		return int32(n), true
+	}
+	switch u.Scheme {
+	case "https":
+		return 443, true
+	case "http":
+		return 80, true
+	default:
+		return 0, false
+	}
 }

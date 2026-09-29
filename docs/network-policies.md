@@ -23,7 +23,7 @@ Direction is relative to the `app: kbs` operand pod.
 | 1 | Ingress | Any client (attesters, callers) | TCP 8080 | KBS API / key brokering | `kbs-allow-ingress` |
 | 2 | Ingress | OpenShift ingress router *(OCP only)* | — | External access via Route | `kbs-allow-ingress` (router rule) |
 | 3 | Egress | Cluster DNS namespace | UDP/TCP 53, UDP/TCP 5353 | Name resolution | `kbs-allow-egress-dns` |
-| 4 | Egress | External attestation services | TCP 443 | Evidence/collateral verification | `kbs-allow-egress-attestation` |
+| 4 | Egress | External attestation services | TCP 443 (+ proxy port) | Evidence/collateral verification | `kbs-allow-egress-attestation` |
 | — | Both | Everything else | — | Denied by default | `kbs-deny-all` |
 
 External attestation peers on port 443 (connected profile):
@@ -41,6 +41,14 @@ Notes:
   performs the external lookup on the pod's behalf.
 - NetworkPolicy cannot match destinations by DNS name, so the attestation egress
   allows TCP 443 to any destination as a portable baseline.
+- **Proxy-aware.** When a cluster-wide proxy (OpenShift `Proxy/cluster`) or a
+  user-specified proxy (`KbsConfig.spec.kbsEnvVars`) is configured, KBS reaches
+  the attestation peers through the proxy rather than directly on 443. The
+  controller parses the effective `HTTPS_PROXY`/`HTTP_PROXY` (both case variants,
+  same precedence as the env vars injected into the operand) and adds the proxy
+  port to the attestation egress rule. Ports other than 443 (e.g. 3128, 8080) are
+  appended; 443 is deduplicated. As above, only the port is opened — the proxy
+  host cannot be matched by DNS name. `NO_PROXY` needs no extra egress rule.
 
 ## 3. The four operand policies
 
@@ -54,7 +62,8 @@ namespace.
    extra rule allows the ingress router namespace (`policy-group.network.openshift.io/ingress: ""`).
 3. **`kbs-allow-egress-dns`** — egress UDP/TCP 53 + 5353 to the DNS namespace
    (`kube-system` on Kubernetes, `openshift-dns` on OpenShift).
-4. **`kbs-allow-egress-attestation`** — egress TCP 443 (connected profile).
+4. **`kbs-allow-egress-attestation`** — egress TCP 443 (connected profile), plus
+   the configured proxy port when a cluster-wide or user-specified proxy is set.
 
 Platform differences (DNS namespace, router ingress rule) are selected at runtime
 via the reconciler's `IsOpenShift` field, which defaults to `false` (vanilla
