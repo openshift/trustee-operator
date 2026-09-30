@@ -153,6 +153,20 @@ func (r *KbsConfigReconciler) migrateKbsConfigMap(ctx context.Context) error {
 		return r.addMigrationAnnotation(ctx, configMap)
 	}
 
+	// The delete-and-recreate flow below is only safe for ConfigMaps managed by
+	// a TrusteeConfig, which recreates them in v1.2 format on the next reconcile.
+	// A standalone, user-provided ConfigMap (KbsConfig-only flow) is never
+	// recreated, so deleting it would deadlock reconciliation (the deployment
+	// step then fails permanently with "ConfigMap not found"). For that case,
+	// migrate in place: back up for safety and mark as migrated without deleting.
+	if !isManagedByTrusteeConfig(configMap) {
+		r.log.Info("KBS config ConfigMap is not managed by a TrusteeConfig; migrating in place without deletion", "name", configMap.Name, "backup", backupName)
+		if err = r.createConfigMapBackup(ctx, configMap); err != nil {
+			return fmt.Errorf("failed to create backup of KBS config ConfigMap: %w", err)
+		}
+		return r.addMigrationAnnotation(ctx, configMap)
+	}
+
 	r.log.Info("Creating backup of v1.1 KBS config for migration", "name", configMap.Name, "backup", backupName)
 
 	// Create backup ConfigMap
@@ -515,6 +529,21 @@ func (r *KbsConfigReconciler) migrateGeneratedPolicyConfigMap(ctx context.Contex
 		}
 	}
 
+	// The delete-and-recreate flow below relies on the reconciliation loop
+	// regenerating the policy ConfigMap with updated content. Only the
+	// TrusteeConfig controller generates these policy ConfigMaps; in the
+	// standalone KbsConfig flow the policy ConfigMap is user-provided and is
+	// never recreated, so deleting it would deadlock reconciliation ("ConfigMap
+	// not found"). For that case, migrate in place: back up and annotate without
+	// deleting.
+	if !isManagedByTrusteeConfig(configMap) {
+		r.log.Info("Policy ConfigMap is not managed by a TrusteeConfig; migrating in place without deletion", "name", configMap.Name, "type", description)
+		if err = r.createConfigMapBackup(ctx, configMap); err != nil {
+			return fmt.Errorf("failed to create backup of %s ConfigMap: %w", description, err)
+		}
+		return r.addMigrationAnnotation(ctx, configMap)
+	}
+
 	// ConfigMap exists but has no migration annotation - create backup and delete it
 	// The reconciliation loop will recreate it with updated content
 	r.log.Info("Creating backup and deleting policy ConfigMap to trigger recreation", "name", configMap.Name, "type", description)
@@ -535,6 +564,21 @@ func (r *KbsConfigReconciler) migrateGeneratedPolicyConfigMap(ctx context.Contex
 		"ConfigMapMigration", "Deleted %s ConfigMap %s for migration - will be recreated with updated content (backup: %s)", description, configMap.Name, configMap.Name+BackupSuffix)
 
 	return nil
+}
+
+// isManagedByTrusteeConfig reports whether the ConfigMap is controlled by a
+// TrusteeConfig custom resource. TrusteeConfig-managed ConfigMaps are recreated
+// in v1.2 format on the next reconcile, so the delete-and-recreate migration is
+// safe for them. Standalone KbsConfig deployments provide the ConfigMap directly
+// and it carries no such owner reference; deleting it would deadlock because
+// nothing recreates it.
+func isManagedByTrusteeConfig(configMap *corev1.ConfigMap) bool {
+	for _, ref := range configMap.OwnerReferences {
+		if ref.Kind == "TrusteeConfig" && strings.HasPrefix(ref.APIVersion, "confidentialcontainers.org/") {
+			return true
+		}
+	}
+	return false
 }
 
 // addMigrationAnnotation adds the migration annotation to a ConfigMap that's already in the new format
