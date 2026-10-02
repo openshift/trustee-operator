@@ -581,6 +581,12 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 		}
 	}
 
+	trustedCAVolume, trustedCAVolumeMount := r.buildTrustedCAVolumeConfig(ctx)
+	if trustedCAVolume != (corev1.Volume{}) {
+		volumes = append(volumes, trustedCAVolume)
+		kbsVM = append(kbsVM, trustedCAVolumeMount)
+	}
+
 	if r.kbsConfig.Spec.KbsDeploymentType == confidentialcontainersorgv1alpha1.DeploymentTypeMicroservices {
 
 		// as-config
@@ -591,6 +597,9 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 		volumes = append(volumes, *volume)
 		volumeMount = createVolumeMount(volume.Name, filepath.Join(asDefaultConfigPath, volume.Name))
 		asVM = append(asVM, volumeMount)
+		if trustedCAVolumeMount != (corev1.VolumeMount{}) {
+			asVM = append(asVM, trustedCAVolumeMount)
+		}
 
 		// rvps-config
 		volume, err = r.createConfigMapVolume(ctx, "rvps-config", r.kbsConfig.Spec.KbsRvpsConfigMapName)
@@ -851,6 +860,26 @@ func (r *KbsConfigReconciler) buildKbsContainer(volumeMounts []corev1.VolumeMoun
 // getClusterProxyEnvVars retrieves cluster-wide proxy settings from OpenShift
 func (r *KbsConfigReconciler) getClusterProxyEnvVars(ctx context.Context) map[string]string {
 	proxyEnvVars := make(map[string]string)
+	// Check if HTTP_PROXY, HTTPS_PROXY, and NO_PROXY are set as environment variables first
+	if os.Getenv("HTTP_PROXY") != "" {
+		proxyEnvVars["HTTP_PROXY"] = os.Getenv("HTTP_PROXY")
+		proxyEnvVars["http_proxy"] = os.Getenv("HTTP_PROXY")
+	}
+
+	if os.Getenv("HTTPS_PROXY") != "" {
+		proxyEnvVars["HTTPS_PROXY"] = os.Getenv("HTTPS_PROXY")
+		proxyEnvVars["https_proxy"] = os.Getenv("HTTPS_PROXY")
+	}
+
+	if os.Getenv("NO_PROXY") != "" {
+		proxyEnvVars["NO_PROXY"] = os.Getenv("NO_PROXY")
+		proxyEnvVars["no_proxy"] = os.Getenv("NO_PROXY")
+	}
+
+	if len(proxyEnvVars) > 0 {
+		r.log.Info("Auto-configured cluster proxy settings for trustee deployment from environment variables")
+		return proxyEnvVars
+	}
 
 	// Try to get the cluster-wide proxy configuration (OpenShift-specific)
 	proxy := &configv1.Proxy{}
@@ -863,19 +892,19 @@ func (r *KbsConfigReconciler) getClusterProxyEnvVars(ctx context.Context) map[st
 	}
 
 	// Set proxy environment variables if they are configured
-	if proxy.Spec.HTTPProxy != "" {
-		proxyEnvVars["HTTP_PROXY"] = proxy.Spec.HTTPProxy
-		proxyEnvVars["http_proxy"] = proxy.Spec.HTTPProxy
+	if proxy.Status.HTTPProxy != "" {
+		proxyEnvVars["HTTP_PROXY"] = proxy.Status.HTTPProxy
+		proxyEnvVars["http_proxy"] = proxy.Status.HTTPProxy
 	}
 
-	if proxy.Spec.HTTPSProxy != "" {
-		proxyEnvVars["HTTPS_PROXY"] = proxy.Spec.HTTPSProxy
-		proxyEnvVars["https_proxy"] = proxy.Spec.HTTPSProxy
+	if proxy.Status.HTTPSProxy != "" {
+		proxyEnvVars["HTTPS_PROXY"] = proxy.Status.HTTPSProxy
+		proxyEnvVars["https_proxy"] = proxy.Status.HTTPSProxy
 	}
 
-	if proxy.Spec.NoProxy != "" {
-		proxyEnvVars["NO_PROXY"] = proxy.Spec.NoProxy
-		proxyEnvVars["no_proxy"] = proxy.Spec.NoProxy
+	if proxy.Status.NoProxy != "" {
+		proxyEnvVars["NO_PROXY"] = proxy.Status.NoProxy
+		proxyEnvVars["no_proxy"] = proxy.Status.NoProxy
 	}
 
 	if len(proxyEnvVars) > 0 {
@@ -913,6 +942,85 @@ func buildEnvVars(r *KbsConfigReconciler, ctx context.Context) []corev1.EnvVar {
 	})
 
 	return env
+}
+
+const (
+	trustedCAConfigMapName = "trusted-ca"
+	trustedCAMountPath     = "/etc/pki/ca-trust/extracted/pem"
+)
+
+func (r *KbsConfigReconciler) buildTrustedCAVolumeConfig(ctx context.Context) (corev1.Volume, corev1.VolumeMount) {
+	volume := corev1.Volume{}
+	volumeMount := corev1.VolumeMount{}
+
+	proxy := &configv1.Proxy{}
+	trustedCA := &corev1.ConfigMap{}
+
+	err := r.Get(ctx, client.ObjectKey{Name: "trusted-ca", Namespace: r.namespace}, trustedCA)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			r.log.Info("Trusted CA ConfigMap not found in namespace, check if it's needed")
+			err = r.Get(ctx, client.ObjectKey{Name: "cluster"}, proxy)
+			if err != nil {
+				r.log.Info("Failed to get cluster proxy configuration, skipping trusted CA configuration", "error", err)
+				return volume, volumeMount
+			}
+			if proxy.Spec.TrustedCA.Name != "" {
+				r.log.Info("Trusted CA config is found in cluster proxy configuration, creating ConfigMap in namespace")
+				trustedCA = &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      trustedCAConfigMapName,
+						Namespace: r.namespace,
+						Labels: map[string]string{
+							"config.openshift.io/inject-trusted-cabundle": "true",
+						},
+					},
+					Data: map[string]string{"ca-bundle.crt": ""},
+				}
+
+				err = ctrl.SetControllerReference(r.kbsConfig, trustedCA, r.Scheme)
+				if err != nil {
+					r.log.Info("Failed to set controller reference for trusted CA ConfigMap, skipping trusted CA configuration", "error", err)
+					return volume, volumeMount
+				}
+
+				err = r.Create(ctx, trustedCA)
+				if err != nil {
+					r.log.Info("Failed to create trusted CA ConfigMap, skipping trusted CA configuration", "error", err)
+					return volume, volumeMount
+				}
+				r.log.Info("Trusted CA ConfigMap created")
+			}
+
+		} else {
+			r.log.Info("Failed to get trusted CA configuration", "error", err)
+			return volume, volumeMount
+		}
+	}
+	r.log.Info("Trusted CA ConfigMap found, creating volume and volume mount")
+	volume = corev1.Volume{
+		Name: "trusted-ca",
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: trustedCAConfigMapName,
+				},
+				Items: []corev1.KeyToPath{
+					{
+						Key:  "ca-bundle.crt",
+						Path: "tls-ca-bundle.pem",
+					},
+				},
+			},
+		},
+	}
+	volumeMount = corev1.VolumeMount{
+		Name:      trustedCAConfigMapName,
+		MountPath: trustedCAMountPath,
+		ReadOnly:  true,
+	}
+
+	return volume, volumeMount
 }
 
 func (r *KbsConfigReconciler) isHttpsConfigPresent() bool {
