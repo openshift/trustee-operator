@@ -171,7 +171,11 @@ spec:
           verbs:
           - create
           - delete
+          - get
+          - list
+          - patch
           - update
+          - watch
         serviceAccountName: trustee-operator-controller-manager
       deployments:
       - label:

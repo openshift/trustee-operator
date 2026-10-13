@@ -30,8 +30,6 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -46,6 +44,7 @@ import (
 
 	confidentialcontainersorgv1alpha1 "github.com/confidential-containers/trustee-operator/api/v1alpha1"
 	controller "github.com/confidential-containers/trustee-operator/internal/controller"
+	utils "github.com/confidential-containers/trustee-operator/internal/controller/utils"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	//+kubebuilder:scaffold:imports
 )
@@ -99,20 +98,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Detect if running on OpenShift
-	isOpenShift, err := isOpenShiftCluster(ctx, tempClient)
+	// Detect which OpenShift API capabilities the cluster serves. These are
+	// independent: the TLS-profile handling below needs config.openshift.io,
+	// while Route/NetworkPolicy handling needs route.openshift.io.
+	caps, err := utils.DetectPlatformCapabilities(ctx, cfg)
 	if err != nil {
 		setupLog.Error(err, "unable to detect cluster type")
 		os.Exit(1)
 	}
+	isOpenShift := caps.HasRouteAPI || caps.HasConfigAPI
+	if isOpenShift {
+		setupLog.Info("OpenShift cluster detected", "routeAPI", caps.HasRouteAPI, "configAPI", caps.HasConfigAPI)
+	} else {
+		setupLog.Info("Vanilla Kubernetes cluster detected")
+	}
 
-	// On non-OpenShift clusters the config.openshift.io/APIServer CRD is absent, so skip
-	// the fetch and leave tlsOptsList empty to use controller-runtime's TLS defaults.
+	// Without config.openshift.io the APIServer CR is absent, so skip the fetch
+	// and leave tlsOptsList empty to use controller-runtime's TLS defaults. Gate
+	// on HasConfigAPI (not general OpenShift-ness) so a cluster that serves only
+	// route.openshift.io does not terminate startup here.
 	var (
 		tlsProfileSpec configv1.TLSProfileSpec
 		tlsOptsList    []func(*tls.Config)
 	)
-	if isOpenShift {
+	if caps.HasConfigAPI {
 		tlsProfileSpec, err = openshifttls.FetchAPIServerTLSProfile(ctx, tempClient)
 		if err != nil {
 			setupLog.Error(err, "unable to fetch TLS profile from APIServer CR")
@@ -181,8 +190,10 @@ func main() {
 		namespace = controller.KbsOperatorNamespace
 	}
 
-	// Install SecurityProfileWatcher to detect TLS profile changes on OpenShift
-	if isOpenShift {
+	// Install SecurityProfileWatcher to detect TLS profile changes. This watches
+	// the config.openshift.io APIServer CR, so gate on HasConfigAPI to match the
+	// TLS-profile fetch above.
+	if caps.HasConfigAPI {
 		watcher := &openshifttls.SecurityProfileWatcher{
 			Client:                mgr.GetClient(),
 			InitialTLSProfileSpec: tlsProfileSpec,
@@ -211,6 +222,10 @@ func main() {
 	if err = (&controller.KbsConfigReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		// NetworkPolicy handling (router ingress peer, openshift-dns vs
+		// kube-system) depends specifically on the Route API, so gate it on
+		// HasRouteAPI rather than general OpenShift-ness.
+		IsOpenShift: caps.HasRouteAPI,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KbsConfig")
 		os.Exit(1)
@@ -219,6 +234,9 @@ func main() {
 	if err = (&controller.TrusteeConfigReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		// Route management requires the Route API; gate it on HasRouteAPI so
+		// reconciliation does not fail on clusters without route.openshift.io.
+		IsOpenShift: caps.HasRouteAPI,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TrusteeConfig")
 		os.Exit(1)
@@ -239,21 +257,6 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-// isOpenShiftCluster detects if running on OpenShift by checking for the APIServer CRD
-func isOpenShiftCluster(ctx context.Context, c client.Client) (bool, error) {
-	apiServer := &configv1.APIServer{}
-	err := c.Get(ctx, client.ObjectKey{Name: "cluster"}, apiServer)
-	if err != nil {
-		if k8serrors.IsNotFound(err) || meta.IsNoMatchError(err) {
-			// Not an OpenShift cluster
-			return false, nil
-		}
-		// Some other error occurred
-		return false, err
-	}
-	return true, nil
 }
 
 func labelNamespace(ctx context.Context, mgr manager.Manager, nsName string) error {
