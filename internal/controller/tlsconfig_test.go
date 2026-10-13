@@ -475,6 +475,7 @@ func TestGetTLSConfigFromCluster_IntermediateProfile(t *testing.T) {
 	if result.TlsProfile != "intermediate" {
 		t.Errorf("Expected profile 'intermediate', got '%s'", result.TlsProfile)
 	}
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
 }
 
 func TestGetTLSConfigFromCluster_ModernProfile(t *testing.T) {
@@ -499,6 +500,12 @@ func TestGetTLSConfigFromCluster_ModernProfile(t *testing.T) {
 
 	if result.TlsProfile != "modern" {
 		t.Errorf("Expected profile 'modern', got '%s'", result.TlsProfile)
+	}
+
+	// Modern is TLS 1.3 only: the three TLS 1.3 cipher suites, no DHE.
+	expectedCiphers := "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+	if result.TlsCiphers != expectedCiphers {
+		t.Errorf("Expected ciphers '%s', got '%s'", expectedCiphers, result.TlsCiphers)
 	}
 }
 
@@ -525,6 +532,8 @@ func TestGetTLSConfigFromCluster_OldProfile(t *testing.T) {
 	if result.TlsProfile != "old" {
 		t.Errorf("Expected profile 'old', got '%s'", result.TlsProfile)
 	}
+	// The old profile contains ECDHE (and legacy RSA) ciphers but no DHE-RSA.
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
 }
 
 func TestGetTLSConfigFromCluster_CustomProfile(t *testing.T) {

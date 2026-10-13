@@ -237,17 +237,15 @@ func GetTLSConfigFromCluster(ctx context.Context, c client.Client, fallbackConfi
 
 // convertOpenShiftTLSProfile converts OpenShift TLSSecurityProfile to KbsConfigTemplateData
 func convertOpenShiftTLSProfile(profile *configv1.TLSSecurityProfile) *KbsConfigTemplateData {
-	data := &KbsConfigTemplateData{}
-
 	switch profile.Type {
 	case configv1.TLSProfileOldType:
-		data.TlsProfile = "old"
-	case configv1.TLSProfileIntermediateType:
-		data.TlsProfile = "intermediate"
+		return newPredefinedProfileData("old")
 	case configv1.TLSProfileModernType:
-		data.TlsProfile = "modern"
+		return newPredefinedProfileData("modern")
+	case configv1.TLSProfileIntermediateType:
+		return newPredefinedProfileData("intermediate")
 	case configv1.TLSProfileCustomType:
-		data.TlsProfile = "custom"
+		data := &KbsConfigTemplateData{TlsProfile: "custom"}
 		if profile.Custom != nil {
 			data.TlsMinVersion = convertTLSVersion(profile.Custom.MinTLSVersion)
 			// OpenShift TLSProfileSpec doesn't have MaxTLSVersion, only MinTLSVersion
@@ -260,12 +258,11 @@ func convertOpenShiftTLSProfile(profile *configv1.TLSSecurityProfile) *KbsConfig
 			// Note: Groups field is not available in all versions of OpenShift API
 			// It was added later with the TLSGroupPreferences feature gate
 		}
+		return data
 	default:
 		// Unknown profile type, default to intermediate
-		data.TlsProfile = "intermediate"
+		return newPredefinedProfileData("intermediate")
 	}
-
-	return data
 }
 
 // convertTLSVersion converts OpenShift TLSProtocolVersion to string format
