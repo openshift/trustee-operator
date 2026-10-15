@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -27,6 +28,90 @@ import (
 
 	confidentialcontainersorgv1alpha1 "github.com/confidential-containers/trustee-operator/api/v1alpha1"
 )
+
+// assertCiphersExpandedAndDHEFree verifies that a cipher string was populated
+// (profile expansion happened), offers at least one ECDHE cipher, and contains
+// no finite-field DHE cipher (which the Mozilla intermediate profile excludes
+// but OpenSSL's mozilla_intermediate_v5 default would otherwise serve).
+func assertCiphersExpandedAndDHEFree(t *testing.T, ciphers string) {
+	t.Helper()
+
+	if ciphers == "" {
+		t.Fatalf("Expected ciphers to be populated, got empty string")
+	}
+
+	hasECDHE := false
+	for _, c := range strings.Split(ciphers, ":") {
+		if strings.HasPrefix(c, "DHE-") {
+			t.Errorf("Expected no DHE cipher, found '%s' in '%s'", c, ciphers)
+		}
+		if strings.HasPrefix(c, "ECDHE-") {
+			hasECDHE = true
+		}
+	}
+	if !hasECDHE {
+		t.Errorf("Expected at least one ECDHE cipher, got '%s'", ciphers)
+	}
+}
+
+func TestFilterDHECiphers(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "empty",
+			input:    []string{},
+			expected: []string{},
+		},
+		{
+			name: "removes OpenSSL-format DHE, keeps ECDHE",
+			input: []string{
+				"ECDHE-RSA-AES128-GCM-SHA256",
+				"DHE-RSA-AES128-GCM-SHA256",
+				"DHE-RSA-AES256-GCM-SHA384",
+				"ECDHE-ECDSA-CHACHA20-POLY1305",
+			},
+			expected: []string{
+				"ECDHE-RSA-AES128-GCM-SHA256",
+				"ECDHE-ECDSA-CHACHA20-POLY1305",
+			},
+		},
+		{
+			name: "removes IANA-format DHE, keeps ECDHE and TLS 1.3",
+			input: []string{
+				"TLS_AES_128_GCM_SHA256",
+				"TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",
+				"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+			},
+			expected: []string{
+				"TLS_AES_128_GCM_SHA256",
+				"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+			},
+		},
+		{
+			name: "no DHE present is a no-op",
+			input: []string{
+				"TLS_AES_128_GCM_SHA256",
+				"ECDHE-RSA-AES128-GCM-SHA256",
+			},
+			expected: []string{
+				"TLS_AES_128_GCM_SHA256",
+				"ECDHE-RSA-AES128-GCM-SHA256",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterDHECiphers(tt.input)
+			if strings.Join(result, ":") != strings.Join(tt.expected, ":") {
+				t.Errorf("filterDHECiphers(%v) = %v, expected %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
 
 func TestGetTLSConfigFromTlsConfig_Nil(t *testing.T) {
 	result := GetTLSConfigFromTlsConfig(nil)
@@ -40,12 +125,12 @@ func TestGetTLSConfigFromTlsConfig_Nil(t *testing.T) {
 	if result.TlsMaxVersion != "" {
 		t.Errorf("Expected TlsMaxVersion to be empty, got '%s'", result.TlsMaxVersion)
 	}
-	if result.TlsCiphers != "" {
-		t.Errorf("Expected TlsCiphers to be empty, got '%s'", result.TlsCiphers)
-	}
 	if result.TlsGroups != "" {
 		t.Errorf("Expected TlsGroups to be empty, got '%s'", result.TlsGroups)
 	}
+	// nil config defaults to the intermediate profile, which must be expanded
+	// into its explicit (DHE-free) cipher list.
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
 }
 
 func TestGetTLSConfigFromTlsConfig_Modern(t *testing.T) {
@@ -64,6 +149,39 @@ func TestGetTLSConfigFromTlsConfig_Modern(t *testing.T) {
 	if result.TlsMaxVersion != "" {
 		t.Errorf("Expected TlsMaxVersion to be empty, got '%s'", result.TlsMaxVersion)
 	}
+
+	// Modern is TLS 1.3 only: the three TLS 1.3 cipher suites, no DHE.
+	expectedCiphers := "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+	if result.TlsCiphers != expectedCiphers {
+		t.Errorf("Expected ciphers '%s', got '%s'", expectedCiphers, result.TlsCiphers)
+	}
+}
+
+func TestGetTLSConfigFromTlsConfig_Intermediate(t *testing.T) {
+	tlsConfig := &confidentialcontainersorgv1alpha1.TlsConfig{
+		Profile: "intermediate",
+	}
+
+	result := GetTLSConfigFromTlsConfig(tlsConfig)
+
+	if result.TlsProfile != "intermediate" {
+		t.Errorf("Expected TlsProfile to be 'intermediate', got '%s'", result.TlsProfile)
+	}
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
+}
+
+func TestGetTLSConfigFromTlsConfig_Old(t *testing.T) {
+	tlsConfig := &confidentialcontainersorgv1alpha1.TlsConfig{
+		Profile: "old",
+	}
+
+	result := GetTLSConfigFromTlsConfig(tlsConfig)
+
+	if result.TlsProfile != "old" {
+		t.Errorf("Expected TlsProfile to be 'old', got '%s'", result.TlsProfile)
+	}
+	// The old profile contains ECDHE (and legacy RSA) ciphers but no DHE-RSA.
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
 }
 
 func TestGetTLSConfigFromTlsConfig_EmptyProfile(t *testing.T) {
@@ -76,6 +194,7 @@ func TestGetTLSConfigFromTlsConfig_EmptyProfile(t *testing.T) {
 	if result.TlsProfile != "intermediate" {
 		t.Errorf("Expected empty profile to default to 'intermediate', got '%s'", result.TlsProfile)
 	}
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
 }
 
 func TestGetTLSConfigFromTlsConfig_Custom(t *testing.T) {
@@ -356,6 +475,7 @@ func TestGetTLSConfigFromCluster_IntermediateProfile(t *testing.T) {
 	if result.TlsProfile != "intermediate" {
 		t.Errorf("Expected profile 'intermediate', got '%s'", result.TlsProfile)
 	}
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
 }
 
 func TestGetTLSConfigFromCluster_ModernProfile(t *testing.T) {
@@ -380,6 +500,12 @@ func TestGetTLSConfigFromCluster_ModernProfile(t *testing.T) {
 
 	if result.TlsProfile != "modern" {
 		t.Errorf("Expected profile 'modern', got '%s'", result.TlsProfile)
+	}
+
+	// Modern is TLS 1.3 only: the three TLS 1.3 cipher suites, no DHE.
+	expectedCiphers := "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+	if result.TlsCiphers != expectedCiphers {
+		t.Errorf("Expected ciphers '%s', got '%s'", expectedCiphers, result.TlsCiphers)
 	}
 }
 
@@ -406,6 +532,8 @@ func TestGetTLSConfigFromCluster_OldProfile(t *testing.T) {
 	if result.TlsProfile != "old" {
 		t.Errorf("Expected profile 'old', got '%s'", result.TlsProfile)
 	}
+	// The old profile contains ECDHE (and legacy RSA) ciphers but no DHE-RSA.
+	assertCiphersExpandedAndDHEFree(t, result.TlsCiphers)
 }
 
 func TestGetTLSConfigFromCluster_CustomProfile(t *testing.T) {
@@ -484,18 +612,23 @@ func TestGetTLSConfigFromCluster_NeitherOpenShiftNorTrusteeConfig(t *testing.T) 
 		t.Errorf("Expected default profile 'intermediate', got '%s'", result.TlsProfile)
 	}
 
-	// Other fields should be empty (profile handles defaults internally)
+	// Version and group fields stay empty: predefined profiles let KBS pick the
+	// profile defaults for those.
 	if result.TlsMinVersion != "" {
 		t.Errorf("Expected TlsMinVersion to be empty, got '%s'", result.TlsMinVersion)
 	}
 	if result.TlsMaxVersion != "" {
 		t.Errorf("Expected TlsMaxVersion to be empty, got '%s'", result.TlsMaxVersion)
 	}
-	if result.TlsCiphers != "" {
-		t.Errorf("Expected TlsCiphers to be empty, got '%s'", result.TlsCiphers)
-	}
 	if result.TlsGroups != "" {
 		t.Errorf("Expected TlsGroups to be empty, got '%s'", result.TlsGroups)
+	}
+
+	// Predefined profiles are now expanded into an explicit, DHE-free cipher
+	// list, so the fallback must match the intermediate profile's ciphers.
+	expectedCiphers := newPredefinedProfileData("intermediate").TlsCiphers
+	if result.TlsCiphers != expectedCiphers {
+		t.Errorf("Expected TlsCiphers '%s', got '%s'", expectedCiphers, result.TlsCiphers)
 	}
 }
 

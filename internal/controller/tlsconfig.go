@@ -41,24 +41,23 @@ type KbsConfigTemplateData struct {
 func GetTLSConfigFromTlsConfig(tlsConfig *confidentialcontainersorgv1alpha1.TlsConfig) *KbsConfigTemplateData {
 	// Default to intermediate profile
 	if tlsConfig == nil {
-		return &KbsConfigTemplateData{
-			TlsProfile: "intermediate",
-		}
+		return newPredefinedProfileData("intermediate")
 	}
 
-	data := &KbsConfigTemplateData{
-		TlsProfile: tlsConfig.Profile,
-	}
+	profile := tlsConfig.Profile
 
 	// If profile is empty, default to intermediate
-	if data.TlsProfile == "" {
-		data.TlsProfile = "intermediate"
+	if profile == "" {
+		profile = "intermediate"
 	}
 
-	// For custom profile, include additional fields
-	if tlsConfig.Profile == "custom" {
-		data.TlsMinVersion = tlsConfig.MinVersion
-		data.TlsMaxVersion = tlsConfig.MaxVersion
+	// For custom profile, pass through the explicitly provided fields.
+	if profile == "custom" {
+		data := &KbsConfigTemplateData{
+			TlsProfile:    "custom",
+			TlsMinVersion: tlsConfig.MinVersion,
+			TlsMaxVersion: tlsConfig.MaxVersion,
+		}
 
 		if len(tlsConfig.Ciphers) > 0 {
 			data.TlsCiphers = convertCiphers(tlsConfig.Ciphers)
@@ -67,9 +66,63 @@ func GetTLSConfigFromTlsConfig(tlsConfig *confidentialcontainersorgv1alpha1.TlsC
 		if len(tlsConfig.Groups) > 0 {
 			data.TlsGroups = strings.Join(tlsConfig.Groups, ":")
 		}
+
+		return data
+	}
+
+	// Predefined profiles (old / intermediate / modern).
+	return newPredefinedProfileData(profile)
+}
+
+// newPredefinedProfileData builds template data for a predefined profile
+// (old/intermediate/modern), expanding it into the profile's explicit cipher
+// list.
+//
+// Without this, KBS only receives the profile name and bases its listener on
+// OpenSSL's SslAcceptor::mozilla_intermediate_v5, whose cipher list includes
+// DHE-RSA ciphers. Passing an explicit cipher list makes KBS serve exactly the
+// ciphers we select. The definitions are sourced from the Mozilla-based TLS
+// profiles in github.com/openshift/api.
+//
+// Finite-field DHE ciphers are filtered out: they are not post-quantum relevant,
+// are being retired from the Mozilla/OpenShift intermediate profile, and are
+// flagged by OpenShift TLS adherence checks. Filtering them here keeps the
+// behaviour stable regardless of the github.com/openshift/api version in use
+// (older revisions still list DHE in the intermediate profile).
+func newPredefinedProfileData(profile string) *KbsConfigTemplateData {
+	data := &KbsConfigTemplateData{TlsProfile: profile}
+
+	var profileType configv1.TLSProfileType
+	switch profile {
+	case "old":
+		profileType = configv1.TLSProfileOldType
+	case "modern":
+		profileType = configv1.TLSProfileModernType
+	default:
+		profileType = configv1.TLSProfileIntermediateType
+	}
+
+	if spec, ok := configv1.TLSProfiles[profileType]; ok {
+		// Profile ciphers are already in OpenSSL format.
+		data.TlsCiphers = strings.Join(filterDHECiphers(spec.Ciphers), ":")
 	}
 
 	return data
+}
+
+// filterDHECiphers returns the cipher list with finite-field Diffie-Hellman
+// (DHE) ciphers removed. ECDHE (elliptic-curve) ciphers are preserved.
+func filterDHECiphers(ciphers []string) []string {
+	filtered := make([]string, 0, len(ciphers))
+	for _, c := range ciphers {
+		// Cipher names may be in OpenSSL ("DHE-RSA-...") or IANA
+		// ("TLS_DHE_RSA_...") form. ECDHE ciphers do not match these prefixes.
+		if strings.HasPrefix(c, "DHE-") || strings.HasPrefix(c, "TLS_DHE_") {
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+	return filtered
 }
 
 // convertCiphers converts IANA cipher names to OpenSSL format
@@ -184,17 +237,15 @@ func GetTLSConfigFromCluster(ctx context.Context, c client.Client, fallbackConfi
 
 // convertOpenShiftTLSProfile converts OpenShift TLSSecurityProfile to KbsConfigTemplateData
 func convertOpenShiftTLSProfile(profile *configv1.TLSSecurityProfile) *KbsConfigTemplateData {
-	data := &KbsConfigTemplateData{}
-
 	switch profile.Type {
 	case configv1.TLSProfileOldType:
-		data.TlsProfile = "old"
-	case configv1.TLSProfileIntermediateType:
-		data.TlsProfile = "intermediate"
+		return newPredefinedProfileData("old")
 	case configv1.TLSProfileModernType:
-		data.TlsProfile = "modern"
+		return newPredefinedProfileData("modern")
+	case configv1.TLSProfileIntermediateType:
+		return newPredefinedProfileData("intermediate")
 	case configv1.TLSProfileCustomType:
-		data.TlsProfile = "custom"
+		data := &KbsConfigTemplateData{TlsProfile: "custom"}
 		if profile.Custom != nil {
 			data.TlsMinVersion = convertTLSVersion(profile.Custom.MinTLSVersion)
 			// OpenShift TLSProfileSpec doesn't have MaxTLSVersion, only MinTLSVersion
@@ -207,12 +258,11 @@ func convertOpenShiftTLSProfile(profile *configv1.TLSSecurityProfile) *KbsConfig
 			// Note: Groups field is not available in all versions of OpenShift API
 			// It was added later with the TLSGroupPreferences feature gate
 		}
+		return data
 	default:
 		// Unknown profile type, default to intermediate
-		data.TlsProfile = "intermediate"
+		return newPredefinedProfileData("intermediate")
 	}
-
-	return data
 }
 
 // convertTLSVersion converts OpenShift TLSProtocolVersion to string format

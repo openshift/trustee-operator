@@ -139,6 +139,7 @@ func (r *KbsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// This prevents blocking the entire deployment if migration has transient issues
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
+
 	// Create or update the NetworkPolicies that isolate the KBS operand pods
 	err = r.deployOrUpdateKbsNetworkPolicies(ctx)
 	if err != nil {
