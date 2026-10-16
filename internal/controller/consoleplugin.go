@@ -20,8 +20,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	consolev1 "github.com/openshift/api/console/v1"
+	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -85,7 +87,7 @@ func consolePluginImage() string {
 // --- ConfigMap (nginx.conf) ---
 
 func (r *KbsConfigReconciler) deployOrUpdateConsolePluginConfigMap(ctx context.Context) error {
-	desired := r.newConsolePluginConfigMap()
+	desired := r.newConsolePluginConfigMap(ctx)
 	found := &corev1.ConfigMap{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), found)
 	if err != nil && k8serrors.IsNotFound(err) {
@@ -102,8 +104,8 @@ func (r *KbsConfigReconciler) deployOrUpdateConsolePluginConfigMap(ctx context.C
 	return r.Update(ctx, found)
 }
 
-func (r *KbsConfigReconciler) newConsolePluginConfigMap() *corev1.ConfigMap {
-	nginxConf := r.buildNginxConf()
+func (r *KbsConfigReconciler) newConsolePluginConfigMap(ctx context.Context) *corev1.ConfigMap {
+	nginxConf := r.buildNginxConf(ctx)
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ConsolePluginName,
@@ -118,11 +120,8 @@ func (r *KbsConfigReconciler) newConsolePluginConfigMap() *corev1.ConfigMap {
 	return cm
 }
 
-func (r *KbsConfigReconciler) buildNginxConf() string {
-	sslProtocols := "TLSv1.2 TLSv1.3"
-	sslCiphers := "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
-	sslECDHCurve := "SecP256r1MLKEM768:SecP384r1MLKEM1024:secp256r1:secp384r1"
-
+func (r *KbsConfigReconciler) buildNginxConf(ctx context.Context) string {
+	nd := r.nginxTLSFromCluster(ctx)
 	return fmt.Sprintf(`error_log /dev/stdout info;
 events {}
 http {
@@ -142,7 +141,105 @@ http {
     root                /usr/share/nginx/html;
   }
 }
-`, consolePluginPort, consolePluginPort, sslProtocols, sslCiphers, sslECDHCurve)
+`, consolePluginPort, consolePluginPort, nd.protocols, nd.ciphers, nd.ecdhCurve)
+}
+
+// nginxTLSDirectives holds the nginx ssl_* directive values derived from the
+// cluster TLS profile.
+type nginxTLSDirectives struct {
+	protocols string
+	ciphers   string
+	ecdhCurve string
+}
+
+// pqcECDHCurves are the post-quantum ML-KEM hybrid groups that ubi10/nginx-126
+// (OpenSSL 3.5) supports. Prepended to the curve list so PQC key exchange is
+// preferred when both sides support it.
+var pqcECDHCurves = []string{"SecP256r1MLKEM768", "SecP384r1MLKEM1024"}
+
+// defaultClassicCurves are the classical ECDH curves used when the cluster
+// profile does not specify groups.
+var defaultClassicCurves = []string{"secp256r1", "secp384r1"}
+
+// nginxTLSFromCluster reads the cluster's TLS security profile and translates
+// it into nginx ssl_* directive values. PQC ML-KEM hybrid groups are always
+// prepended to the ECDH curve list.
+func (r *KbsConfigReconciler) nginxTLSFromCluster(ctx context.Context) nginxTLSDirectives {
+	defaults := nginxTLSDirectives{
+		protocols: "TLSv1.2 TLSv1.3",
+		ciphers:   "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305",
+		ecdhCurve: strings.Join(append(pqcECDHCurves, defaultClassicCurves...), ":"),
+	}
+
+	apiServer := &configv1.APIServer{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, apiServer); err != nil {
+		r.log.Info("Cannot read APIServer TLS profile, using defaults", "err", err)
+		return defaults
+	}
+
+	profile := apiServer.Spec.TLSSecurityProfile
+	if profile == nil {
+		return defaults
+	}
+
+	return tlsProfileToNginx(profile)
+}
+
+// tlsProfileToNginx converts an OpenShift TLSSecurityProfile to nginx
+// ssl_protocols, ssl_ciphers, and ssl_ecdh_curve values.
+func tlsProfileToNginx(profile *configv1.TLSSecurityProfile) nginxTLSDirectives {
+	var spec configv1.TLSProfileSpec
+	switch profile.Type {
+	case configv1.TLSProfileCustomType:
+		if profile.Custom != nil {
+			spec = profile.Custom.TLSProfileSpec
+		} else {
+			spec = *configv1.TLSProfiles[configv1.TLSProfileIntermediateType]
+		}
+	default:
+		profileType := profile.Type
+		if profileType == "" {
+			profileType = configv1.TLSProfileIntermediateType
+		}
+		s, ok := configv1.TLSProfiles[profileType]
+		if !ok {
+			s = configv1.TLSProfiles[configv1.TLSProfileIntermediateType]
+		}
+		spec = *s
+	}
+
+	nd := nginxTLSDirectives{}
+
+	// Protocols: derive from MinTLSVersion
+	nd.protocols = nginxProtocols(spec.MinTLSVersion)
+
+	// Ciphers: filter DHE, convert to OpenSSL names
+	ciphers := filterDHECiphers(spec.Ciphers)
+	if len(ciphers) > 0 {
+		nd.ciphers = strings.Join(ciphers, ":")
+	} else {
+		nd.ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+	}
+
+	// ECDH curves: PQC ML-KEM hybrids + classical curves
+	nd.ecdhCurve = strings.Join(append(pqcECDHCurves, defaultClassicCurves...), ":")
+
+	return nd
+}
+
+// nginxProtocols returns the nginx ssl_protocols string for a given minimum
+// TLS version.
+func nginxProtocols(minVersion configv1.TLSProtocolVersion) string {
+	switch minVersion {
+	case configv1.VersionTLS10:
+		return "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3"
+	case configv1.VersionTLS11:
+		return "TLSv1.1 TLSv1.2 TLSv1.3"
+	case configv1.VersionTLS13:
+		return "TLSv1.3"
+	default:
+		return "TLSv1.2 TLSv1.3"
+	}
 }
 
 // --- Deployment ---
