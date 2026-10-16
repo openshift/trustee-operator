@@ -26,6 +26,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	confidentialcontainersorgv1alpha1 "github.com/confidential-containers/trustee-operator/api/v1alpha1"
 )
 
 const (
@@ -141,6 +143,16 @@ func (r *KbsConfigReconciler) migrateKbsConfigMap(ctx context.Context) error {
 	}, backupConfigMap)
 
 	if backupErr == nil {
+		// A standalone (non-TrusteeConfig) ConfigMap is never deleted/recreated, so a
+		// pre-existing backup means a previous in-place migration attempt was interrupted
+		// (e.g. template generation or the Update failed) before the content was rewritten.
+		// Re-run the in-place migration rather than merging plugins onto the un-regenerated
+		// v1.1 base. createConfigMapBackup already skips when the backup exists, so no
+		// duplicate backup is created.
+		if !isManagedByTrusteeConfig(configMap) {
+			r.log.Info("KBS config ConfigMap is not managed by a TrusteeConfig; retrying in-place migration", "name", configMap.Name, "backup", backupName)
+			return r.migrateStandaloneKbsConfigInPlace(ctx, configMap)
+		}
 		// We have a backup and the ConfigMap exists (recreated by TrusteeConfig)
 		// This means we're in step 2: merge plugins from backup
 		r.log.Info("Merging plugins from backup into recreated v1.2 KBS config", "name", configMap.Name, "backup", backupName)
@@ -164,7 +176,7 @@ func (r *KbsConfigReconciler) migrateKbsConfigMap(ctx context.Context) error {
 		if err = r.createConfigMapBackup(ctx, configMap); err != nil {
 			return fmt.Errorf("failed to create backup of KBS config ConfigMap: %w", err)
 		}
-		return r.addMigrationAnnotation(ctx, configMap)
+		return r.migrateStandaloneKbsConfigInPlace(ctx, configMap)
 	}
 
 	r.log.Info("Creating backup of v1.1 KBS config for migration", "name", configMap.Name, "backup", backupName)
@@ -186,6 +198,58 @@ func (r *KbsConfigReconciler) migrateKbsConfigMap(ctx context.Context) error {
 	r.log.Info("Deleted KBS config ConfigMap for v1.2 recreation", "name", configMap.Name)
 	r.Recorder.Eventf(r.kbsConfig, nil, corev1.EventTypeNormal, "ConfigMapDeleted",
 		"ConfigMapMigration", "Deleted KBS config ConfigMap %s - will recreate in v1.2 format and merge plugins from backup %s", configMap.Name, backupName)
+
+	return nil
+}
+
+// migrateStandaloneKbsConfigInPlace migrates a user-provided (standalone KbsConfig)
+// kbs-config.toml from v1.1 to v1.2 format without deleting the ConfigMap. Deleting a
+// user-managed ConfigMap would deadlock reconciliation because nothing recreates it,
+// so the content is rewritten in place and a .v1.1 backup is preserved for recovery.
+//
+// It applies the SAME transformation used for TrusteeConfig-managed ConfigMaps: the
+// v1.2 base is regenerated from the operator's config template and only the user's
+// [[plugins]] are carried over (transformed to the v1.2 schema via transformPluginsToV12).
+// Standalone KbsConfig has no profile field, so the permissive template is used, matching
+// the TrusteeConfig default profile.
+func (r *KbsConfigReconciler) migrateStandaloneKbsConfigInPlace(ctx context.Context, configMap *corev1.ConfigMap) error {
+	v11Toml, hasToml := configMap.Data["kbs-config.toml"]
+	if !hasToml {
+		// Nothing to transform; just mark as migrated.
+		return r.addMigrationAnnotation(ctx, configMap)
+	}
+
+	// Regenerate the v1.2 base config from the template. Standalone KbsConfig has no
+	// profile, so default to permissive (same default as the TrusteeConfig controller).
+	baseToml, err := generateKbsTomlConfigFromTemplate(ctx, r.Client, r.log,
+		confidentialcontainersorgv1alpha1.ProfileTypePermissive, nil)
+	if err != nil {
+		return fmt.Errorf("failed to generate v1.2 KBS config base for in-place migration: %w", err)
+	}
+
+	// Reuse the TrusteeConfig transformation: drop the template's default plugins and
+	// append the user's v1.1 plugins transformed to the v1.2 schema.
+	baseWithoutPlugins := removePluginsSections(baseToml)
+	transformedPlugins := transformPluginsToV12(extractPluginsSections(v11Toml))
+
+	mergedToml := baseWithoutPlugins
+	if len(transformedPlugins) > 0 {
+		mergedToml = baseWithoutPlugins + "\n\n" + strings.Join(transformedPlugins, "\n\n")
+	}
+
+	configMap.Data["kbs-config.toml"] = mergedToml
+	if configMap.Annotations == nil {
+		configMap.Annotations = make(map[string]string)
+	}
+	configMap.Annotations[MigrationAnnotation] = MigrationVersion
+
+	if err := r.Update(ctx, configMap); err != nil {
+		return fmt.Errorf("failed to update in-place migrated KBS config ConfigMap: %w", err)
+	}
+
+	r.log.Info("Migrated standalone KBS config ConfigMap to v1.2 in place", "name", configMap.Name, "plugins", len(transformedPlugins))
+	r.Recorder.Eventf(r.kbsConfig, nil, corev1.EventTypeNormal, "ConfigMapMigrated",
+		"ConfigMapMigrated", "Migrated standalone KBS config ConfigMap %s from v1.1.0 to v1.2.0 format in place (backup preserved)", configMap.Name)
 
 	return nil
 }
