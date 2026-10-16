@@ -624,7 +624,7 @@ func (r *KbsConfigReconciler) newKbsDeployment(ctx context.Context) (*appsv1.Dep
 	}
 
 	securityContext := createSecurityContext()
-	env := buildEnvVars(r)
+	env := buildEnvVars(ctx, r)
 	containers := []corev1.Container{r.buildKbsContainer(kbsVM, securityContext, env, kbsDeploymentType)}
 
 	if kbsDeploymentType == confidentialcontainersorgv1alpha1.DeploymentTypeMicroservices {
@@ -903,13 +903,61 @@ var proxyEnvVarKeys = []string{
 	"NO_PROXY", "no_proxy",
 }
 
+// getClusterProxyCREnvVars reads HTTP_PROXY, HTTPS_PROXY, and NO_PROXY from the
+// cluster-wide Proxy CR ("cluster") on OpenShift. OLM injects these into the
+// operator pod's environment, but only after a restart; reading the CR directly
+// makes the NetworkPolicy egress rules correct on the first reconcile. Returns
+// an empty map when not on OpenShift or when the CR cannot be read.
+func (r *KbsConfigReconciler) getClusterProxyCREnvVars(ctx context.Context) map[string]string {
+	proxyEnvVars := make(map[string]string)
+	if !r.IsOpenShift {
+		return proxyEnvVars
+	}
+
+	proxy := &configv1.Proxy{}
+	if err := r.Get(ctx, client.ObjectKey{Name: "cluster"}, proxy); err != nil {
+		r.log.Info("Failed to get cluster proxy configuration, skipping proxy egress rules", "error", err)
+		return proxyEnvVars
+	}
+
+	if proxy.Spec.HTTPProxy != "" {
+		proxyEnvVars["HTTP_PROXY"] = proxy.Spec.HTTPProxy
+		proxyEnvVars["http_proxy"] = proxy.Spec.HTTPProxy
+	}
+	if proxy.Spec.HTTPSProxy != "" {
+		proxyEnvVars["HTTPS_PROXY"] = proxy.Spec.HTTPSProxy
+		proxyEnvVars["https_proxy"] = proxy.Spec.HTTPSProxy
+	}
+	// Prefer the effective no-proxy list from status: OpenShift augments the
+	// user-specified Spec.NoProxy with the machine, cluster, and service network
+	// CIDRs (and the cloud metadata endpoint). Using only Spec.NoProxy risks
+	// routing in-cluster traffic through the proxy. Fall back to Spec when status
+	// is not yet populated.
+	noProxy := proxy.Status.NoProxy
+	if noProxy == "" {
+		noProxy = proxy.Spec.NoProxy
+	}
+	if noProxy != "" {
+		proxyEnvVars["NO_PROXY"] = noProxy
+		proxyEnvVars["no_proxy"] = noProxy
+	}
+
+	return proxyEnvVars
+}
+
 // getEffectiveProxyEnvVars returns the proxy settings that actually apply to the
 // KBS operand: the cluster-wide proxy (OpenShift) with any proxy-related
 // KbsEnvVars overrides applied on top. This mirrors the precedence used in
 // buildEnvVars so the NetworkPolicy egress rules stay consistent with the env
 // vars injected into the operand containers.
-func (r *KbsConfigReconciler) getEffectiveProxyEnvVars() map[string]string {
-	effective := r.getClusterProxyEnvVars()
+func (r *KbsConfigReconciler) getEffectiveProxyEnvVars(ctx context.Context) map[string]string {
+	// Start with the cluster-wide proxy, preferring the OLM-injected env vars and
+	// falling back to the cluster Proxy CR (which is authoritative even before the
+	// operator restart that injects those env vars).
+	effective := r.getClusterProxyCREnvVars(ctx)
+	for k, v := range r.getClusterProxyEnvVars() {
+		effective[k] = v
+	}
 
 	// User-specified KbsEnvVars override cluster proxy settings.
 	if r.kbsConfig.Spec.KbsEnvVars != nil {
@@ -923,11 +971,18 @@ func (r *KbsConfigReconciler) getEffectiveProxyEnvVars() map[string]string {
 	return effective
 }
 
-func buildEnvVars(r *KbsConfigReconciler) []corev1.EnvVar {
+func buildEnvVars(ctx context.Context, r *KbsConfigReconciler) []corev1.EnvVar {
 	env := make([]corev1.EnvVar, 0)
 
-	// First, get cluster-wide proxy settings
-	clusterProxyEnvVars := r.getClusterProxyEnvVars()
+	// First, get cluster-wide proxy settings. Prefer the cluster Proxy CR (which is
+	// authoritative even before the operator restart that makes OLM inject these as
+	// env vars) and let the OLM-injected env vars override it when present. This keeps
+	// the operand's proxy env vars consistent with the NetworkPolicy egress rules,
+	// which are derived from the same source via getEffectiveProxyEnvVars.
+	clusterProxyEnvVars := r.getClusterProxyCREnvVars(ctx)
+	for k, v := range r.getClusterProxyEnvVars() {
+		clusterProxyEnvVars[k] = v
+	}
 
 	// Start with cluster proxy settings
 	envVarsMap := make(map[string]string)
