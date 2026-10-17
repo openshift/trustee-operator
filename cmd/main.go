@@ -26,6 +26,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	consolev1 "github.com/openshift/api/console/v1"
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
@@ -59,6 +60,7 @@ func init() {
 
 	utilruntime.Must(confidentialcontainersorgv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(configv1.AddToScheme(scheme))
+	utilruntime.Must(consolev1.Install(scheme))
 	utilruntime.Must(routev1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
@@ -240,6 +242,16 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TrusteeConfig")
 		os.Exit(1)
+	}
+
+	if isOpenShift {
+		if err = (&controller.ConsolePluginReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "ConsolePlugin")
+			os.Exit(1)
+		}
 	}
 	//+kubebuilder:scaffold:builder
 
