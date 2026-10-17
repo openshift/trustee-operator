@@ -22,6 +22,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/go-logr/logr"
 	consolev1 "github.com/openshift/api/console/v1"
 	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -31,9 +32,18 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 const (
@@ -42,7 +52,93 @@ const (
 	consolePluginCertSecret = "trustee-openshift-console-plugin-cert"
 )
 
-// consolePluginLabels returns the standard labels for console plugin resources.
+// ConsolePluginReconciler deploys and maintains the Trustee console plugin
+// independently of any CR. It starts at operator boot and self-heals if
+// any managed resource is modified or deleted.
+type ConsolePluginReconciler struct {
+	client.Client
+	Scheme    *runtime.Scheme
+	namespace string
+	log       logr.Logger
+}
+
+//+kubebuilder:rbac:groups=console.openshift.io,resources=consoleplugins,verbs=get;list;watch;create;update;patch;delete
+
+func (r *ConsolePluginReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+	r.log.Info("Reconciling console plugin")
+
+	image := os.Getenv("CONSOLE_PLUGIN_IMAGE")
+	if image == "" {
+		r.log.Info("CONSOLE_PLUGIN_IMAGE not set, skipping console plugin deployment")
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.ensureConfigMap(ctx); err != nil {
+		return ctrl.Result{}, fmt.Errorf("console plugin ConfigMap: %w", err)
+	}
+	if err := r.ensureDeployment(ctx, image); err != nil {
+		return ctrl.Result{}, fmt.Errorf("console plugin Deployment: %w", err)
+	}
+	if err := r.ensureService(ctx); err != nil {
+		return ctrl.Result{}, fmt.Errorf("console plugin Service: %w", err)
+	}
+	if err := r.ensureConsolePluginCR(ctx); err != nil {
+		return ctrl.Result{}, fmt.Errorf("ConsolePlugin CR: %w", err)
+	}
+	if err := r.ensureNetworkPolicy(ctx); err != nil {
+		return ctrl.Result{}, fmt.Errorf("console plugin NetworkPolicy: %w", err)
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *ConsolePluginReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.namespace = os.Getenv("POD_NAMESPACE")
+	if r.namespace == "" {
+		r.namespace = KbsOperatorNamespace
+	}
+	r.log = ctrl.Log.WithName("consoleplugin-controller")
+
+	// Channel source fires once after informer caches sync, seeding the
+	// initial reconcile that creates the plugin resources.
+	ch := make(chan event.GenericEvent, 1)
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		if !mgr.GetCache().WaitForCacheSync(ctx) {
+			return nil
+		}
+		ch <- event.GenericEvent{Object: &consolev1.ConsolePlugin{
+			ObjectMeta: metav1.ObjectMeta{Name: ConsolePluginName},
+		}}
+		return nil
+	})); err != nil {
+		return err
+	}
+
+	mapToRequest := handler.EnqueueRequestsFromMapFunc(
+		func(_ context.Context, _ client.Object) []reconcile.Request {
+			return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: ConsolePluginName}}}
+		},
+	)
+
+	nameFilter := predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		return obj.GetName() == ConsolePluginName
+	})
+	nsNameFilter := predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		return obj.GetName() == ConsolePluginName && obj.GetNamespace() == r.namespace
+	})
+
+	return ctrl.NewControllerManagedBy(mgr).
+		Named("consoleplugin").
+		WatchesRawSource(source.Channel(ch, &handler.EnqueueRequestForObject{})).
+		Watches(&consolev1.ConsolePlugin{}, mapToRequest, builder.WithPredicates(nameFilter)).
+		Watches(&appsv1.Deployment{}, mapToRequest, builder.WithPredicates(nsNameFilter)).
+		Watches(&corev1.Service{}, mapToRequest, builder.WithPredicates(nsNameFilter)).
+		Watches(&corev1.ConfigMap{}, mapToRequest, builder.WithPredicates(nsNameFilter)).
+		Watches(&networkingv1.NetworkPolicy{}, mapToRequest, builder.WithPredicates(nsNameFilter)).
+		Complete(r)
+}
+
+// --- labels ---
+
 func consolePluginLabels() map[string]string {
 	return map[string]string{
 		"app":                          ConsolePluginName,
@@ -53,41 +149,10 @@ func consolePluginLabels() map[string]string {
 	}
 }
 
-// deployOrUpdateConsolePlugin creates or updates all resources for the console plugin:
-// Deployment, Service, ConfigMap (nginx.conf), ConsolePlugin CR, and NetworkPolicy.
-func (r *KbsConfigReconciler) deployOrUpdateConsolePlugin(ctx context.Context) error {
-	image := consolePluginImage()
-	if image == "" {
-		r.log.Info("CONSOLE_PLUGIN_IMAGE not set, skipping console plugin deployment")
-		return nil
-	}
-
-	if err := r.deployOrUpdateConsolePluginConfigMap(ctx); err != nil {
-		return fmt.Errorf("console plugin ConfigMap: %w", err)
-	}
-	if err := r.deployOrUpdateConsolePluginDeployment(ctx, image); err != nil {
-		return fmt.Errorf("console plugin Deployment: %w", err)
-	}
-	if err := r.deployOrUpdateConsolePluginService(ctx); err != nil {
-		return fmt.Errorf("console plugin Service: %w", err)
-	}
-	if err := r.deployOrUpdateConsolePluginCR(ctx); err != nil {
-		return fmt.Errorf("ConsolePlugin CR: %w", err)
-	}
-	if err := r.deployOrUpdateConsolePluginNetworkPolicy(ctx); err != nil {
-		return fmt.Errorf("console plugin NetworkPolicy: %w", err)
-	}
-	return nil
-}
-
-func consolePluginImage() string {
-	return os.Getenv("CONSOLE_PLUGIN_IMAGE")
-}
-
 // --- ConfigMap (nginx.conf) ---
 
-func (r *KbsConfigReconciler) deployOrUpdateConsolePluginConfigMap(ctx context.Context) error {
-	desired := r.newConsolePluginConfigMap(ctx)
+func (r *ConsolePluginReconciler) ensureConfigMap(ctx context.Context) error {
+	desired := r.desiredConfigMap(ctx)
 	found := &corev1.ConfigMap{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), found)
 	if err != nil && k8serrors.IsNotFound(err) {
@@ -104,23 +169,20 @@ func (r *KbsConfigReconciler) deployOrUpdateConsolePluginConfigMap(ctx context.C
 	return r.Update(ctx, found)
 }
 
-func (r *KbsConfigReconciler) newConsolePluginConfigMap(ctx context.Context) *corev1.ConfigMap {
-	nginxConf := r.buildNginxConf(ctx)
-	cm := &corev1.ConfigMap{
+func (r *ConsolePluginReconciler) desiredConfigMap(ctx context.Context) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ConsolePluginName,
 			Namespace: r.namespace,
 			Labels:    consolePluginLabels(),
 		},
 		Data: map[string]string{
-			"nginx.conf": nginxConf,
+			"nginx.conf": r.buildNginxConf(ctx),
 		},
 	}
-	_ = ctrl.SetControllerReference(r.kbsConfig, cm, r.Scheme)
-	return cm
 }
 
-func (r *KbsConfigReconciler) buildNginxConf(ctx context.Context) string {
+func (r *ConsolePluginReconciler) buildNginxConf(ctx context.Context) string {
 	nd := r.nginxTLSFromCluster(ctx)
 	return fmt.Sprintf(`error_log /dev/stdout info;
 events {}
@@ -144,27 +206,18 @@ http {
 `, consolePluginPort, consolePluginPort, nd.protocols, nd.ciphers, nd.ecdhCurve)
 }
 
-// nginxTLSDirectives holds the nginx ssl_* directive values derived from the
-// cluster TLS profile.
+// --- TLS profile → nginx directives ---
+
 type nginxTLSDirectives struct {
 	protocols string
 	ciphers   string
 	ecdhCurve string
 }
 
-// pqcECDHCurves are the post-quantum ML-KEM hybrid groups that ubi10/nginx-126
-// (OpenSSL 3.5) supports. Prepended to the curve list so PQC key exchange is
-// preferred when both sides support it.
 var pqcECDHCurves = []string{"SecP256r1MLKEM768", "SecP384r1MLKEM1024"}
-
-// defaultClassicCurves are the classical ECDH curves used when the cluster
-// profile does not specify groups.
 var defaultClassicCurves = []string{"secp256r1", "secp384r1"}
 
-// nginxTLSFromCluster reads the cluster's TLS security profile and translates
-// it into nginx ssl_* directive values. PQC ML-KEM hybrid groups are always
-// prepended to the ECDH curve list.
-func (r *KbsConfigReconciler) nginxTLSFromCluster(ctx context.Context) nginxTLSDirectives {
+func (r *ConsolePluginReconciler) nginxTLSFromCluster(ctx context.Context) nginxTLSDirectives {
 	defaults := nginxTLSDirectives{
 		protocols: "TLSv1.2 TLSv1.3",
 		ciphers:   "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305",
@@ -185,8 +238,6 @@ func (r *KbsConfigReconciler) nginxTLSFromCluster(ctx context.Context) nginxTLSD
 	return tlsProfileToNginx(profile)
 }
 
-// tlsProfileToNginx converts an OpenShift TLSSecurityProfile to nginx
-// ssl_protocols, ssl_ciphers, and ssl_ecdh_curve values.
 func tlsProfileToNginx(profile *configv1.TLSSecurityProfile) nginxTLSDirectives {
 	var spec configv1.TLSProfileSpec
 	switch profile.Type {
@@ -209,11 +260,8 @@ func tlsProfileToNginx(profile *configv1.TLSSecurityProfile) nginxTLSDirectives 
 	}
 
 	nd := nginxTLSDirectives{}
-
-	// Protocols: derive from MinTLSVersion
 	nd.protocols = nginxProtocols(spec.MinTLSVersion)
 
-	// Ciphers: filter DHE, convert to OpenSSL names
 	ciphers := filterDHECiphers(spec.Ciphers)
 	if len(ciphers) > 0 {
 		nd.ciphers = strings.Join(ciphers, ":")
@@ -221,14 +269,10 @@ func tlsProfileToNginx(profile *configv1.TLSSecurityProfile) nginxTLSDirectives 
 		nd.ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
 	}
 
-	// ECDH curves: PQC ML-KEM hybrids + classical curves
 	nd.ecdhCurve = strings.Join(append(pqcECDHCurves, defaultClassicCurves...), ":")
-
 	return nd
 }
 
-// nginxProtocols returns the nginx ssl_protocols string for a given minimum
-// TLS version.
 func nginxProtocols(minVersion configv1.TLSProtocolVersion) string {
 	switch minVersion {
 	case configv1.VersionTLS10:
@@ -244,8 +288,8 @@ func nginxProtocols(minVersion configv1.TLSProtocolVersion) string {
 
 // --- Deployment ---
 
-func (r *KbsConfigReconciler) deployOrUpdateConsolePluginDeployment(ctx context.Context, image string) error {
-	desired := r.newConsolePluginDeployment(image)
+func (r *ConsolePluginReconciler) ensureDeployment(ctx context.Context, image string) error {
+	desired := r.desiredDeployment(image)
 	found := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), found)
 	if err != nil && k8serrors.IsNotFound(err) {
@@ -264,11 +308,11 @@ func (r *KbsConfigReconciler) deployOrUpdateConsolePluginDeployment(ctx context.
 	return r.Update(ctx, found)
 }
 
-func (r *KbsConfigReconciler) newConsolePluginDeployment(image string) *appsv1.Deployment {
+func (r *ConsolePluginReconciler) desiredDeployment(image string) *appsv1.Deployment {
 	replicas := int32(2)
 	labels := consolePluginLabels()
 
-	dep := &appsv1.Deployment{
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ConsolePluginName,
 			Namespace: r.namespace,
@@ -349,14 +393,12 @@ func (r *KbsConfigReconciler) newConsolePluginDeployment(image string) *appsv1.D
 			},
 		},
 	}
-	_ = ctrl.SetControllerReference(r.kbsConfig, dep, r.Scheme)
-	return dep
 }
 
 // --- Service ---
 
-func (r *KbsConfigReconciler) deployOrUpdateConsolePluginService(ctx context.Context) error {
-	desired := r.newConsolePluginService()
+func (r *ConsolePluginReconciler) ensureService(ctx context.Context) error {
+	desired := r.desiredService()
 	found := &corev1.Service{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), found)
 	if err != nil && k8serrors.IsNotFound(err) {
@@ -375,8 +417,8 @@ func (r *KbsConfigReconciler) deployOrUpdateConsolePluginService(ctx context.Con
 	return r.Update(ctx, found)
 }
 
-func (r *KbsConfigReconciler) newConsolePluginService() *corev1.Service {
-	svc := &corev1.Service{
+func (r *ConsolePluginReconciler) desiredService() *corev1.Service {
+	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ConsolePluginName,
 			Namespace: r.namespace,
@@ -396,14 +438,12 @@ func (r *KbsConfigReconciler) newConsolePluginService() *corev1.Service {
 			}},
 		},
 	}
-	_ = ctrl.SetControllerReference(r.kbsConfig, svc, r.Scheme)
-	return svc
 }
 
 // --- ConsolePlugin CR ---
 
-func (r *KbsConfigReconciler) deployOrUpdateConsolePluginCR(ctx context.Context) error {
-	desired := r.newConsolePluginCR()
+func (r *ConsolePluginReconciler) ensureConsolePluginCR(ctx context.Context) error {
+	desired := r.desiredConsolePluginCR()
 	found := &consolev1.ConsolePlugin{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), found)
 	if err != nil && k8serrors.IsNotFound(err) {
@@ -420,8 +460,8 @@ func (r *KbsConfigReconciler) deployOrUpdateConsolePluginCR(ctx context.Context)
 	return r.Update(ctx, found)
 }
 
-func (r *KbsConfigReconciler) newConsolePluginCR() *consolev1.ConsolePlugin {
-	cp := &consolev1.ConsolePlugin{
+func (r *ConsolePluginReconciler) desiredConsolePluginCR() *consolev1.ConsolePlugin {
+	return &consolev1.ConsolePlugin{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   ConsolePluginName,
 			Labels: consolePluginLabels(),
@@ -442,14 +482,12 @@ func (r *KbsConfigReconciler) newConsolePluginCR() *consolev1.ConsolePlugin {
 			},
 		},
 	}
-	// ConsolePlugin is cluster-scoped — no owner reference (KbsConfig is namespaced).
-	return cp
 }
 
 // --- NetworkPolicy ---
 
-func (r *KbsConfigReconciler) deployOrUpdateConsolePluginNetworkPolicy(ctx context.Context) error {
-	desired := r.newConsolePluginNetworkPolicy()
+func (r *ConsolePluginReconciler) ensureNetworkPolicy(ctx context.Context) error {
+	desired := r.desiredNetworkPolicy()
 	found := &networkingv1.NetworkPolicy{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), found)
 	if err != nil && k8serrors.IsNotFound(err) {
@@ -466,11 +504,11 @@ func (r *KbsConfigReconciler) deployOrUpdateConsolePluginNetworkPolicy(ctx conte
 	return r.Update(ctx, found)
 }
 
-func (r *KbsConfigReconciler) newConsolePluginNetworkPolicy() *networkingv1.NetworkPolicy {
+func (r *ConsolePluginReconciler) desiredNetworkPolicy() *networkingv1.NetworkPolicy {
 	tcp := corev1.ProtocolTCP
 	port := intstr.FromInt32(consolePluginPort)
 
-	np := &networkingv1.NetworkPolicy{
+	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ConsolePluginName,
 			Namespace: r.namespace,
@@ -496,9 +534,9 @@ func (r *KbsConfigReconciler) newConsolePluginNetworkPolicy() *networkingv1.Netw
 			}},
 		},
 	}
-	_ = ctrl.SetControllerReference(r.kbsConfig, np, r.Scheme)
-	return np
 }
+
+// --- helpers ---
 
 func boolPtr(b bool) *bool   { return &b }
 func int32Ptr(i int32) *int32 { return &i }

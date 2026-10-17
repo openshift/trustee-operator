@@ -24,7 +24,6 @@ import (
 	"sort"
 	"time"
 
-	consolev1 "github.com/openshift/api/console/v1"
 	configv1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -71,7 +70,6 @@ type KbsConfigReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=config.openshift.io,resources=proxies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=console.openshift.io,resources=consoleplugins,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -168,15 +166,6 @@ func (r *KbsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	// Create or update the console plugin (only if CONSOLE_PLUGIN_IMAGE is set)
-	if r.IsOpenShift {
-		err = r.deployOrUpdateConsolePlugin(ctx)
-		if err != nil {
-			r.log.Info("Error in creating/updating console plugin", "err", err)
-			return ctrl.Result{}, err
-		}
-	}
-
 	// Update KbsConfig status based on deployment readiness
 	err = r.updateKbsConfigStatus(ctx)
 	if err != nil {
@@ -187,39 +176,24 @@ func (r *KbsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-// finalizeKbsConfig deletes the KBS deployment and console plugin CR
+// finalizeKbsConfig deletes the KBS deployment
+// Errors are logged by the callee and hence no error is logged in this method
 func (r *KbsConfigReconciler) finalizeKbsConfig(ctx context.Context) error {
+	// Delete the deployment
 	r.log.Info("Deleting the KBS deployment")
+	// Get the KbsDeploymentName deployment
 	deployment := &appsv1.Deployment{}
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: r.namespace,
 		Name:      KbsDeploymentName,
 	}, deployment)
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			return err
-		}
-	} else {
-		if err := r.Delete(ctx, deployment); err != nil {
-			return err
-		}
+		return err
 	}
-
-	// ConsolePlugin is cluster-scoped and cannot have an owner reference
-	// to the namespaced KbsConfig, so clean it up explicitly.
-	cp := &consolev1.ConsolePlugin{}
-	err = r.Get(ctx, client.ObjectKey{Name: ConsolePluginName}, cp)
+	err = r.Delete(ctx, deployment)
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			return err
-		}
-	} else {
-		r.log.Info("Deleting ConsolePlugin CR")
-		if err := r.Delete(ctx, cp); err != nil {
-			return err
-		}
+		return err
 	}
-
 	return nil
 }
 
