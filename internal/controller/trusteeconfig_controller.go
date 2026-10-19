@@ -23,6 +23,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"text/template"
 
@@ -601,50 +602,66 @@ func (r *TrusteeConfigReconciler) getHttpsCertSecretName() string {
 	return r.trusteeConfig.Name + "-https-cert-secret"
 }
 
-// generateKbsTomlConfig generates the TOML configuration for KBS
-func (r *TrusteeConfigReconciler) generateKbsTomlConfig(ctx context.Context) (string, error) {
+// kbsConfigTemplateDir is the directory that holds the KBS config TOML templates.
+// It is a var (not a const) so tests can point it at a local template directory.
+var kbsConfigTemplateDir = "/config/templates"
+
+// generateKbsTomlConfigFromTemplate renders the v1.2 KBS config TOML from the
+// profile-specific template. It is shared between the TrusteeConfig controller
+// (normal generation) and the KbsConfig controller's v1.1->v1.2 migration of
+// standalone, user-provided ConfigMaps, so that both paths produce the config
+// through the exact same template + rendering logic.
+func generateKbsTomlConfigFromTemplate(ctx context.Context, c client.Client, log logr.Logger,
+	profile confidentialcontainersorgv1alpha1.ProfileType, tlsConfig *confidentialcontainersorgv1alpha1.TlsConfig) (string, error) {
+
 	var templateFile string
 
 	// Select template file based on profile type
-	switch r.trusteeConfig.Spec.Profile {
+	switch profile {
 	case confidentialcontainersorgv1alpha1.ProfileTypeRestrictive:
-		templateFile = "/config/templates/kbs-config-restricted.toml"
-		r.log.Info("Using restricted configuration template")
+		templateFile = filepath.Join(kbsConfigTemplateDir, "kbs-config-restricted.toml")
+		log.Info("Using restricted configuration template")
 	case confidentialcontainersorgv1alpha1.ProfileTypePermissive:
-		templateFile = "/config/templates/kbs-config-permissive.toml"
-		r.log.Info("Using permissive configuration template")
+		templateFile = filepath.Join(kbsConfigTemplateDir, "kbs-config-permissive.toml")
+		log.Info("Using permissive configuration template")
 	default:
-		templateFile = "/config/templates/kbs-config-permissive.toml"
-		r.log.Info("Using default permissive configuration template")
+		templateFile = filepath.Join(kbsConfigTemplateDir, "kbs-config-permissive.toml")
+		log.Info("Using default permissive configuration template")
 	}
 
 	// Read the template file
 	templateContent, err := os.ReadFile(templateFile)
 	if err != nil {
-		r.log.Error(err, "Failed to read config template", "template", templateFile)
+		log.Error(err, "Failed to read config template", "template", templateFile)
 		return "", err
 	}
 
 	// Get TLS configuration data for template rendering
-	// First try to get from OpenShift cluster APIServer, fall back to TrusteeConfig.Spec.TlsConfig
-	tlsData := GetTLSConfigFromCluster(ctx, r.Client, r.trusteeConfig.Spec.TlsConfig)
+	// First try to get from OpenShift cluster APIServer, fall back to the provided TlsConfig
+	tlsData := GetTLSConfigFromCluster(ctx, c, tlsConfig)
 
 	// Parse template
 	tmpl, err := template.New("kbs-config").Parse(string(templateContent))
 	if err != nil {
-		r.log.Error(err, "Failed to parse template")
+		log.Error(err, "Failed to parse template")
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
 
 	// Execute template with TLS data
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, tlsData); err != nil {
-		r.log.Error(err, "Failed to execute template")
+		log.Error(err, "Failed to execute template")
 		return "", fmt.Errorf("failed to execute template: %w", err)
 	}
 
-	r.log.Info("Rendered KBS configuration", "tlsProfile", tlsData.TlsProfile)
+	log.Info("Rendered KBS configuration", "tlsProfile", tlsData.TlsProfile)
 	return buf.String(), nil
+}
+
+// generateKbsTomlConfig generates the TOML configuration for KBS
+func (r *TrusteeConfigReconciler) generateKbsTomlConfig(ctx context.Context) (string, error) {
+	return generateKbsTomlConfigFromTemplate(ctx, r.Client, r.log,
+		r.trusteeConfig.Spec.Profile, r.trusteeConfig.Spec.TlsConfig)
 }
 
 // generateKbsConfigMap creates a ConfigMap for KBS configuration

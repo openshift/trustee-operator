@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	confidentialcontainersorgv1alpha1 "github.com/confidential-containers/trustee-operator/api/v1alpha1"
@@ -182,6 +183,12 @@ func TestMigrateRvpsConfigMap(t *testing.T) {
 }
 
 func TestMigrateKbsConfigMap(t *testing.T) {
+	// The standalone in-place migration renders the v1.2 base from the config
+	// templates; point the loader at the repo's templates for the duration of the test.
+	origTemplateDir := kbsConfigTemplateDir
+	kbsConfigTemplateDir = "../../config/templates"
+	defer func() { kbsConfigTemplateDir = origTemplateDir }()
+
 	oldKbsConfigToml := `[http_server]
 sockets = ["0.0.0.0:8080"]
 insecure_http = false
@@ -392,11 +399,25 @@ policy_path = "/opt/confidential-containers/opa/policy.rego"`
 				if updatedConfigMap.Annotations[MigrationAnnotation] != MigrationVersion {
 					t.Errorf("Expected in-place migration annotation, got %v", updatedConfigMap.Annotations)
 				}
-				// The original TOML data must be left untouched (no delete/recreate).
-				if _, hasToml := updatedConfigMap.Data["kbs-config.toml"]; !hasToml {
-					t.Errorf("Expected standalone ConfigMap to retain kbs-config.toml")
+				// The ConfigMap must be rewritten in place to the v1.2 schema (not deleted).
+				migratedToml, hasToml := updatedConfigMap.Data["kbs-config.toml"]
+				if !hasToml {
+					t.Fatalf("Expected standalone ConfigMap to retain kbs-config.toml")
 				}
-				// A safety backup should still be created.
+				// The v1.2 base must have been regenerated from the template: the [admin]
+				// section uses authorization_mode (v1.2) which the v1.1 input did not have.
+				if !strings.Contains(migratedToml, "authorization_mode") {
+					t.Errorf("Expected migrated config to contain v1.2 base (authorization_mode), got:\n%s", migratedToml)
+				}
+				// The resource plugin must be transformed to the v1.2 storage_backend_type.
+				if !strings.Contains(migratedToml, `storage_backend_type = "kvstorage"`) {
+					t.Errorf("Expected migrated config to contain v1.2 resource plugin schema, got:\n%s", migratedToml)
+				}
+				// The user's plugins must be merged in exactly once (template defaults stripped).
+				if got := strings.Count(migratedToml, "[[plugins]]"); got != 1 {
+					t.Errorf("Expected exactly one merged [[plugins]] section, got %d:\n%s", got, migratedToml)
+				}
+				// A safety backup of the original v1.1 config should still be created.
 				backupConfigMap := &corev1.ConfigMap{}
 				backupName := "test-kbs-config" + BackupSuffix
 				if err := fakeClient.Get(context.Background(),
@@ -404,8 +425,88 @@ policy_path = "/opt/confidential-containers/opa/policy.rego"`
 					backupConfigMap); err != nil {
 					t.Fatalf("Expected backup ConfigMap %s to exist, got error: %v", backupName, err)
 				}
+				if !strings.Contains(backupConfigMap.Data["kbs-config.toml"], `type = "LocalFs"`) {
+					t.Errorf("Expected backup to preserve the original v1.1 config, got:\n%s", backupConfigMap.Data["kbs-config.toml"])
+				}
 			}
 		})
+	}
+}
+
+// TestMigrateStandaloneKbsConfigRetryWithExistingBackup covers the case where a
+// previous standalone in-place migration was interrupted after the backup was
+// created but before the v1.1 content was rewritten. On the next reconcile the
+// backup already exists, and the migration must re-run the in-place transform
+// (regenerating the v1.2 base) rather than merging plugins onto the v1.1 base.
+func TestMigrateStandaloneKbsConfigRetryWithExistingBackup(t *testing.T) {
+	origTemplateDir := kbsConfigTemplateDir
+	kbsConfigTemplateDir = "../../config/templates"
+	defer func() { kbsConfigTemplateDir = origTemplateDir }()
+
+	v11Toml := `[http_server]
+insecure_http = true
+
+[admin]
+type = "DenyAll"
+
+[[plugins]]
+name = "resource"
+type = "LocalFs"
+dir_path = "/opt/confidential-containers/kbs/repository"`
+
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = confidentialcontainersorgv1alpha1.AddToScheme(scheme)
+
+	// Standalone ConfigMap still in v1.1 format, no migration annotation.
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-kbs-config", Namespace: "default"},
+		Data:       map[string]string{"kbs-config.toml": v11Toml},
+	}
+	// A leftover backup from the interrupted attempt already exists.
+	backup := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-kbs-config" + BackupSuffix, Namespace: "default"},
+		Data:       map[string]string{"kbs-config.toml": v11Toml},
+	}
+	kbsConfig := &confidentialcontainersorgv1alpha1.KbsConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-kbsconfig", Namespace: "default"},
+		Spec:       confidentialcontainersorgv1alpha1.KbsConfigSpec{KbsConfigMapName: "test-kbs-config"},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(configMap, backup, kbsConfig).Build()
+
+	r := &KbsConfigReconciler{
+		Client:    fakeClient,
+		Scheme:    scheme,
+		Recorder:  &events.FakeRecorder{},
+		kbsConfig: kbsConfig,
+		log:       logr.Discard(),
+		namespace: "default",
+	}
+
+	if err := r.migrateKbsConfigMap(context.Background()); err != nil {
+		t.Fatalf("migrateKbsConfigMap() error = %v", err)
+	}
+
+	updated := &corev1.ConfigMap{}
+	if err := fakeClient.Get(context.Background(),
+		types.NamespacedName{Name: "test-kbs-config", Namespace: "default"}, updated); err != nil {
+		t.Fatalf("ConfigMap should survive, got error: %v", err)
+	}
+	if updated.Annotations[MigrationAnnotation] != MigrationVersion {
+		t.Errorf("expected migration annotation, got %v", updated.Annotations)
+	}
+	toml := updated.Data["kbs-config.toml"]
+	// Must be the regenerated v1.2 base, not the v1.1 base with merged plugins.
+	if !strings.Contains(toml, "authorization_mode") {
+		t.Errorf("expected regenerated v1.2 base (authorization_mode), got:\n%s", toml)
+	}
+	if !strings.Contains(toml, `storage_backend_type = "kvstorage"`) {
+		t.Errorf("expected v1.2 resource plugin schema, got:\n%s", toml)
+	}
+	if strings.Contains(toml, `type = "DenyAll"`) {
+		t.Errorf("expected v1.1 admin schema to be replaced, got:\n%s", toml)
 	}
 }
 
