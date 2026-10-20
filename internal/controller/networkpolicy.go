@@ -233,7 +233,10 @@ func (r *KbsConfigReconciler) newKbsNetworkPolicies(ctx context.Context) ([]*net
 	// Proxies commonly listen on a non-443 port (e.g. 3128, 8080), which the :443
 	// rule above would not admit, so open the proxy port(s) too. As with :443, the
 	// proxy host cannot be matched by DNS name, so only the port is opened.
-	proxyEnv := r.getEffectiveProxyEnvVars()
+	proxyEnv, err := r.getEffectiveProxyEnvVars(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, p := range proxyEgressPorts(proxyEnv) {
 		if p == 443 {
 			continue // already covered by the baseline rule
