@@ -95,6 +95,8 @@ spec:
           value: ghcr.io/confidential-containers/staged-images/coco-as-grpc:latest
         - name: RVPS_IMAGE_NAME
           value: ghcr.io/confidential-containers/staged-images/rvps:latest
+        - name: CONSOLE_PLUGIN_IMAGE
+          value: quay.io/redhat-user-workloads/ose-osc-tenant/trustee-console-plugin@sha256:d8095015975c4245c6d2ecb67259d7666731703df5fcad48feb869c39de37a8e
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

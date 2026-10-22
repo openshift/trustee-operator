@@ -5,6 +5,7 @@ metadata:
     alm-examples: '[]'
     capabilities: Basic Install
     categories: Security
+    console.openshift.io/plugins: '["trustee-openshift-console-plugin"]'
     containerImage: quay.io/confidential-containers/trustee-operator:v1.2.1
     features.operators.openshift.io/disconnected: "true"
     features.operators.openshift.io/fips-compliant: "false"
@@ -63,5 +64,8 @@ spec:
   provider:
     name: Confidential Containers Community
     url: https://github.com/confidential-containers
+  relatedImages:
+  - image: quay.io/redhat-user-workloads/ose-osc-tenant/trustee-console-plugin@sha256:d8095015975c4245c6d2ecb67259d7666731703df5fcad48feb869c39de37a8e
+    name: trustee-console-plugin
   replaces: trustee-operator.v1.2.0
   version: 1.2.1
