@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -38,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -175,6 +177,10 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "178dc119.confidentialcontainers.org",
+		// Console plugin uninstall cleanup runs after the manager has stopped
+		// and needs room before the pod's terminationGracePeriodSeconds expires
+		// (see CleanupConsolePluginsOnUninstall).
+		GracefulShutdownTimeout: ptr.To(10 * time.Second),
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -280,8 +286,17 @@ func main() {
 			}
 		}
 		if utils.IsConsolePluginSupported(ocpVersion) {
+			// Uninstall cleanup runs after the manager has started shutting
+			// down, when the cached client can no longer serve reads, so it
+			// gets a direct client of its own.
+			cleanupClient, err := client.New(cfg, client.Options{Scheme: scheme})
+			if err != nil {
+				setupLog.Error(err, "unable to create console plugin cleanup client")
+				os.Exit(1)
+			}
 			if err = (&controller.ConsolePluginReconciler{
 				Client:            mgr.GetClient(),
+				CleanupClient:     cleanupClient,
 				Scheme:            mgr.GetScheme(),
 				OperatorCSVPrefix: "trustee-operator",
 			}).SetupWithManager(mgr); err != nil {

@@ -300,7 +300,10 @@ spec:
               securityContext:
                 runAsNonRoot: true
               serviceAccountName: trustee-operator-controller-manager
-              terminationGracePeriodSeconds: 10
+              # Must exceed the manager graceful shutdown plus the uninstall
+              # check and console plugin cleanup, so the cluster-scoped
+              # ConsolePlugin CR is deleted before SIGKILL.
+              terminationGracePeriodSeconds: 60
       permissions:
       - rules:
         - apiGroups:
