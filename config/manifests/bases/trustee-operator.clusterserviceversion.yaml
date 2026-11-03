@@ -6,7 +6,7 @@ metadata:
     capabilities: Basic Install
     categories: Security
     console.openshift.io/plugins: '["trustee-openshift-console-plugin"]'
-    containerImage: quay.io/confidential-containers/trustee-operator:v1.2.1
+    containerImage: quay.io/confidential-containers/trustee-operator:v1.3.0
     features.operators.openshift.io/disconnected: "true"
     features.operators.openshift.io/fips-compliant: "false"
     features.operators.openshift.io/proxy-aware: "true"
@@ -16,7 +16,7 @@ metadata:
     features.operators.openshift.io/token-auth-gcp: "false"
     operatorframework.io/suggested-namespace: trustee-operator-system
     support: Confidential Containers Community
-  name: trustee-operator.v1.2.1
+  name: trustee-operator.v1.3.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -67,5 +67,5 @@ spec:
   relatedImages:
   - image: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-console-plugin@sha256:b95ae4d78a2819073fb37d7a77856317ece9e5aa985d8d2572de2544ab5a1b41
     name: trustee-console-plugin
-  replaces: trustee-operator.v1.2.0
-  version: 1.2.1
+  replaces: trustee-operator.v1.2.1
+  version: 1.3.0
