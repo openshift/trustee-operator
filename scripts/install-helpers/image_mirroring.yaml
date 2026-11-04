@@ -13,6 +13,9 @@ spec:
     - mirrors:
         - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator
       source: registry.redhat.io/build-of-trustee/trustee-rhel9-operator
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-console-plugin
+      source: registry.redhat.io/build-of-trustee/trustee-console-plugin-rhel9
 ---
 apiVersion: config.openshift.io/v1
 kind: ImageDigestMirrorSet
@@ -29,3 +32,6 @@ spec:
     - mirrors:
         - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-operator
       source: registry.redhat.io/build-of-trustee/trustee-rhel9-operator
+    - mirrors:
+        - quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-console-plugin
+      source: registry.redhat.io/build-of-trustee/trustee-console-plugin-rhel9

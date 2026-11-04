@@ -266,7 +266,7 @@ spec:
                 - name: RVPS_IMAGE_NAME
                   value: ghcr.io/confidential-containers/staged-images/rvps:latest
                 - name: CONSOLE_PLUGIN_IMAGE
-                  value: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-console-plugin@sha256:3afae34c7d99785f1d658e9f0170a4eadfb47d289fda4d55dd9016d67a18bfc9
+                  value: registry.redhat.io/build-of-trustee/trustee-console-plugin-rhel9@sha256:5b3c49b6f0606ecbd291d9684c5577d5be57a3488f2d2d1897150724d51f3169
                 image: "registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:5224e5bbb4c39f8079031afb414488489b8a6814194f25f875ddcf7614d9e6bf"
                 livenessProbe:
                   httpGet:
@@ -362,7 +362,7 @@ spec:
   relatedImages:
   - image: registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:cd3f58c022a943ed79d6fdbb2e738104aaac48b0b68100dee8b51ba58e72835e
     name: trustee
-  - image: quay.io/redhat-user-workloads/ose-osc-tenant/trustee/trustee-console-plugin@sha256:b95ae4d78a2819073fb37d7a77856317ece9e5aa985d8d2572de2544ab5a1b41
+  - image: registry.redhat.io/build-of-trustee/trustee-console-plugin-rhel9@sha256:5b3c49b6f0606ecbd291d9684c5577d5be57a3488f2d2d1897150724d51f3169
     name: trustee-console-plugin
   replaces: trustee-operator.v1.2.1
   version: 1.3.0
