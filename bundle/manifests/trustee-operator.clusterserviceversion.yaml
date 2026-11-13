@@ -258,7 +258,7 @@ spec:
                 - name: OPERATOR_IMAGE_NAME
                   value: registry.redhat.io/build-of-trustee/trustee-rhel9-operator@sha256:595a79a6b61ae0db0c6ef4f4651d5d12885a9caa4c608019ce5e5833b0b7df1f
                 - name: KBS_IMAGE_NAME
-                  value: "registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:cd3f58c022a943ed79d6fdbb2e738104aaac48b0b68100dee8b51ba58e72835e"
+                  value: "registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:999d5aed489aa515092c6458cf17ac522e17fd2f0d4335c3cf741a25219c4bd7"
                 - name: KBS_IMAGE_NAME_MICROSERVICES
                   value: ghcr.io/confidential-containers/key-broker-service:v0.21.0
                 - name: AS_IMAGE_NAME
@@ -360,7 +360,7 @@ spec:
     name: Red Hat
     url: https://github.com/confidential-containers
   relatedImages:
-  - image: registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:cd3f58c022a943ed79d6fdbb2e738104aaac48b0b68100dee8b51ba58e72835e
+  - image: registry.redhat.io/build-of-trustee/trustee-rhel9@sha256:999d5aed489aa515092c6458cf17ac522e17fd2f0d4335c3cf741a25219c4bd7
     name: trustee
   - image: registry.redhat.io/build-of-trustee/trustee-console-plugin-rhel9@sha256:1d2bb2fe0b5e516fe77e55bb9f5ec45eff9c30c59ec482f6cc67c486e592639f
     name: trustee-console-plugin
