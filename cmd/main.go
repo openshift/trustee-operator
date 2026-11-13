@@ -168,6 +168,17 @@ func main() {
 		TLSOpts: tlsOptsList,
 	}
 
+	// The operator supports OwnNamespace and SingleNamespace installs (see the
+	// CSV installModes), so the namespace it runs in is not fixed. POD_NAMESPACE
+	// is set by the downward API; resolve it before the manager is created so
+	// the cache below restricts informers to the namespace the operator
+	// actually runs in. Fall back to the default namespace when unset (e.g.
+	// running outside a pod), preserving the previous behavior.
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = controller.KbsOperatorNamespace
+	}
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -190,17 +201,17 @@ func main() {
 			ByObject: map[client.Object]cache.ByObject{
 				&appsv1.Deployment{}: {
 					Namespaces: map[string]cache.Config{
-						controller.KbsOperatorNamespace: {},
+						namespace: {},
 					},
 				},
 				&corev1.Service{}: {
 					Namespaces: map[string]cache.Config{
-						controller.KbsOperatorNamespace: {},
+						namespace: {},
 					},
 				},
 				&networkingv1.NetworkPolicy{}: {
 					Namespaces: map[string]cache.Config{
-						controller.KbsOperatorNamespace: {},
+						namespace: {},
 					},
 				},
 			},
@@ -209,11 +220,6 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
-	}
-
-	namespace := os.Getenv("POD_NAMESPACE")
-	if namespace == "" {
-		namespace = controller.KbsOperatorNamespace
 	}
 
 	// Install SecurityProfileWatcher to detect TLS profile changes. This watches
