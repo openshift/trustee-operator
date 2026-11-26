@@ -96,7 +96,7 @@ spec:
         - name: RVPS_IMAGE_NAME
           value: ghcr.io/confidential-containers/staged-images/rvps:latest
         - name: CONSOLE_PLUGIN_IMAGE
-          value: registry.redhat.io/build-of-trustee/trustee-console-plugin-rhel9@sha256:1d2bb2fe0b5e516fe77e55bb9f5ec45eff9c30c59ec482f6cc67c486e592639f
+          value: registry.redhat.io/build-of-trustee/trustee-console-plugin-rhel9@sha256:5c9d5aa144980a273d0a9f426ea107b93c851f11c65f3e7b988051243ab5e8d9
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
