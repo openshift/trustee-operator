@@ -16,28 +16,21 @@ One file is provided per supported OCP version.
 
 ## Usage
 
-1. Select the file matching your OCP version, e.g. `imageset-config-4.17.yaml`.
+1. Select the file matching your OCP version, e.g. `imageset-config-4.20.yaml`.
 
-2. Edit the `imageURL` field to point to your internal registry:
-
-   ```yaml
-   storageConfig:
-     registry:
-       imageURL: <your-registry>/mirror/oc-mirror-metadata
-   ```
-
-3. Run `oc-mirror` to mirror all images to your internal registry:
+2. Run `oc-mirror` to mirror all images to your internal registry:
 
    ```bash
-   oc-mirror --config imageset-config-4.17.yaml docker://<your-registry>
+   oc-mirror --v2 --config imageset-config-4.20.yaml \
+     --workspace file://oc-mirror-workspace docker://<your-registry>
    ```
 
-4. Apply the generated IDMS (ImageDigestMirrorSet) / ICSP (ImageContentSourcePolicy)
-   manifests to your cluster. These remap image references from upstream
+3. Apply the generated IDMS (ImageDigestMirrorSet) / ICSP (ImageContentSourcePolicy)
+   and CatalogSource manifests to your cluster. These remap image references from upstream
    registries to your internal mirror:
 
    ```bash
-   oc apply -f oc-mirror-workspace/results-*/
+   oc apply -f oc-mirror-workspace/working-dir/cluster-resources/
    ```
 
-5. Install the operator using the mirrored catalog as the source.
+4. Install the operator using the mirrored catalog as the source.
